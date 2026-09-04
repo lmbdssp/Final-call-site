@@ -1,0 +1,6 @@
+{
+  "crons": [
+    { "path": "/api/cron/fetch-picks", "schedule": "0 9 * * *" },
+    { "path": "/api/cron/grade-picks", "schedule": "0 10 * * *" }
+  ]
+}
