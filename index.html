@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Final Call — Score Predictor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700;900&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg-deep:#0A0A0A; --bg-panel:#161616; --bg-panel-2:#2A2A2A;
+    --line-white:#FAFAFA; --line-dim:#8F8F8F;
+    --pink:#FFD400; --cyan:#FAFAFA; --lime:#FFD400; --orange:#C9A227;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg-deep);color:var(--line-white);font-family:'Inter',sans-serif;}
+  body{
+    background-image:
+      radial-gradient(ellipse at top, rgba(255,212,0,0.12), transparent 55%),
+      radial-gradient(ellipse at bottom, rgba(255,255,255,0.05), transparent 55%);
+    min-height:100vh; padding:32px 16px 60px;
+  }
+  .wrap{max-width:640px;margin:0 auto;}
+  .hidden{display:none !important;}
+  .masthead{display:flex; align-items:baseline; justify-content:space-between; border-bottom:1px solid var(--bg-panel-2); margin-bottom:24px; background:#0A0A0A; padding:10px 4px 14px;}
+  .masthead h1{font-family:'Oswald',sans-serif; font-weight:900; font-size:28px; letter-spacing:0.5px; margin:0; color:#FFFFFF; text-transform:uppercase; text-shadow:0 1px 2px rgba(0,0,0,0.9);}
+  .masthead h1 span{color:var(--pink);}
+  .masthead .subtitle{font-family:'Space Mono',monospace; font-size:14px; color:var(--line-dim); letter-spacing:0.5px;}
+  .masthead .userbox{font-family:'Space Mono',monospace; font-size:11px; color:var(--line-dim); text-align:right;}
+  .masthead .userbox a{color:var(--cyan); cursor:pointer; text-decoration:underline;}
+  .auth-card{max-width:400px; margin:60px auto; background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:32px;}
+  .auth-card h2{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:22px; margin:0 0 4px;}
+  .auth-card p{font-size:13px; color:var(--line-dim); margin:0 0 24px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:12px; color:var(--line-dim); margin-bottom:6px;}
+  .field input{width:100%; background:var(--bg-deep); border:1px solid var(--bg-panel-2); color:var(--line-white); font-family:'Inter',sans-serif; font-size:14px; padding:10px 12px; border-radius:var(--radius); outline:none;}
+  .field input:focus{border-color:var(--cyan);}
+  .btn-primary{display:block; width:100%; font-family:'Oswald',sans-serif; font-weight:600; font-size:15px; letter-spacing:0.5px; text-transform:uppercase; background:var(--pink); color:var(--bg-deep); border:none; padding:13px; border-radius:var(--radius); cursor:pointer; margin-top:6px; transition:filter 0.15s;}
+  .btn-primary:hover{filter:brightness(1.1);}
+  .btn-primary:disabled{opacity:0.5; cursor:default;}
+  .auth-error{font-size:12.5px; color:var(--orange); margin-top:10px; min-height:16px;}
+  .auth-status{font-size:12.5px; color:var(--line-dim); margin-top:10px; min-height:16px;}
+  .auth-note{font-size:11px; color:var(--line-dim); margin-top:20px; line-height:1.6; border-top:1px solid var(--bg-panel-2); padding-top:14px;}
+  .plan-banner{display:flex; align-items:center; justify-content:space-between; gap:12px; background:linear-gradient(90deg, rgba(255,212,0,0.14), rgba(255,255,255,0.05)); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:12px 16px; margin-bottom:22px;}
+  .plan-banner .txt{font-size:12.5px; color:var(--line-dim);}
+  .plan-banner .txt b{color:var(--line-white);}
+  .plan-banner button{font-family:'Oswald',sans-serif; font-size:12.5px; text-transform:uppercase; letter-spacing:0.4px; background:var(--lime); color:var(--bg-deep); border:none; padding:9px 14px; border-radius:var(--radius); cursor:pointer; white-space:nowrap;}
+  .modal-overlay{position:fixed; inset:0; background:rgba(9,4,20,0.75); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50;}
+  .modal{background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); max-width:400px; width:100%; padding:28px;}
+  .modal h3{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:20px; margin:0 0 4px;}
+  .modal p.sub{font-size:13px; color:var(--line-dim); margin:0 0 20px;}
+  .plan-toggle{display:flex; gap:8px; margin-bottom:18px;}
+  .plan-option{flex:1; border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:14px; cursor:pointer; text-align:center; transition:border-color 0.15s;}
+  .plan-option.selected{border-color:var(--cyan); background:rgba(255,255,255,0.08);}
+  .plan-option .period{font-family:'Oswald',sans-serif; font-size:13px; text-transform:uppercase; color:var(--line-dim);}
+  .plan-option .price{font-family:'Space Mono',monospace; font-size:22px; color:var(--line-white); margin-top:4px;}
+  .plan-option .save{font-size:11px; color:var(--lime); margin-top:4px;}
+  .modal-close{font-size:12.5px; color:var(--line-dim); text-align:center; margin-top:14px; cursor:pointer; text-decoration:underline;}
+  .sport-row{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px;}
+  .sport-btn{font-family:'Oswald',sans-serif; font-size:14px; letter-spacing:0.3px; background:var(--bg-panel); color:var(--line-dim); border:1px solid var(--bg-panel); padding:8px 14px; border-radius:var(--radius); cursor:pointer; text-transform:uppercase; transition:border-color 0.15s, color 0.15s;}
+  .sport-btn:hover{color:var(--line-white);}
+  .sport-btn.active{border-color:var(--cyan); color:var(--cyan); background:rgba(255,255,255,0.08);}
+  .teams{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px;}
+  @media (max-width:480px){.teams{grid-template-columns:1fr;}}
+  .team-panel{background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:16px;}
+  .team-panel.away{border-top:3px solid var(--cyan);}
+  .team-panel.home{border-top:3px solid var(--pink);}
+  .team-tag{font-family:'Space Mono',monospace; font-size:11px; color:var(--line-dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;}
+  .team-panel input[type=text]{width:100%; background:transparent; border:none; border-bottom:1px solid var(--bg-panel-2); font-family:'Oswald',sans-serif; font-size:20px; color:var(--line-white); padding:4px 0 8px; margin-bottom:14px; outline:none;}
+  .team-panel input[type=text]:focus{border-bottom-color:var(--cyan);}
+  .stat-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;}
+  .stat-row label{font-size:13px; color:var(--line-dim); font-family:'Inter',sans-serif;}
+  .stat-row input[type=number]{width:72px; background:var(--bg-deep); border:1px solid var(--bg-panel-2); color:var(--line-white); font-family:'Space Mono',monospace; font-size:14px; padding:6px 8px; border-radius:var(--radius); outline:none; text-align:right;}
+  .stat-row input[type=number]:focus{border-color:var(--cyan);}
+  .predict-btn{display:block; width:100%; font-family:'Oswald',sans-serif; font-weight:600; font-size:16px; letter-spacing:1px; text-transform:uppercase; background:var(--pink); color:var(--bg-deep); border:none; padding:14px; border-radius:var(--radius); cursor:pointer; margin-bottom:28px; transition:filter 0.15s;}
+  .predict-btn:hover{filter:brightness(1.1);}
+  .predict-btn:active{filter:brightness(0.95);}
+  .board{background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:24px; text-align:center; display:none;}
+  .board.show{display:block;}
+  .board-label{font-family:'Space Mono',monospace; font-size:11px; color:var(--line-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:14px;}
+  .board-score{display:flex; align-items:center; justify-content:center; gap:18px; font-family:'Space Mono',monospace; font-weight:700;}
+  .board-score .num{font-size:56px; color:var(--pink); min-width:70px; text-shadow:0 0 20px rgba(255,212,0,0.4);}
+  .board-score .dash{font-size:32px; color:var(--line-dim);}
+  .board-names{display:flex; justify-content:space-between; margin-top:10px; padding:0 4px;}
+  .board-names span{font-family:'Oswald',sans-serif; font-size:13px; color:var(--line-dim); text-transform:uppercase; letter-spacing:0.5px; max-width:150px;}
+  .board-meta{margin-top:18px; padding-top:14px; border-top:1px solid var(--bg-panel-2); font-size:12.5px; color:var(--line-dim); line-height:1.6; text-align:left;}
+  .board-meta b{color:var(--line-white); font-weight:500;}
+  .confidence-bar{height:4px; background:var(--bg-deep); border-radius:2px; overflow:hidden; margin-top:10px;}
+  .confidence-fill{height:100%; background:var(--lime);}
+  .prop-box{margin-top:18px; padding-top:16px; border-top:1px solid var(--bg-panel-2); text-align:left; position:relative;}
+  .prop-box .prop-title{font-family:'Space Mono',monospace; font-size:11px; color:var(--orange); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;}
+  .prop-box .prop-pick{font-family:'Oswald',sans-serif; font-size:17px; color:var(--line-white);}
+  .prop-box .prop-sub{font-size:12px; color:var(--line-dim); margin-top:4px;}
+  .prop-locked{filter:blur(5px); user-select:none; pointer-events:none;}
+  .prop-lock-overlay{position:absolute; inset:14px 0 0 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center;}
+  .prop-lock-overlay button{font-family:'Oswald',sans-serif; font-size:12px; text-transform:uppercase; letter-spacing:0.4px; background:var(--lime); color:var(--bg-deep); border:none; padding:8px 14px; border-radius:var(--radius); cursor:pointer;}
+  .prop-lock-overlay span{font-size:11.5px; color:var(--line-dim);}
+  .footnote{font-size:11.5px; color:var(--line-dim); margin-top:18px; line-height:1.6;}
+
+  /* ---- Sport ball icons ---- */
+  .ball-icon{font-size:16px; margin-right:6px; vertical-align:middle;}
+
+  /* ---- Public results calendar ---- */
+  .results-section{max-width:640px; margin:40px auto 0; background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:20px;}
+  .results-section h2{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:17px; margin:0 0 4px;}
+  .results-section p.sub{font-size:12.5px; color:var(--line-dim); margin:0 0 16px;}
+  .results-controls{display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap;}
+  .results-controls input[type=date]{background:var(--bg-deep); border:1px solid var(--bg-panel-2); color:var(--line-white); font-family:'Space Mono',monospace; font-size:13px; padding:8px 10px; border-radius:var(--radius); outline:none;}
+  .results-controls button{font-family:'Oswald',sans-serif; font-size:12.5px; text-transform:uppercase; letter-spacing:0.4px; background:var(--pink); color:var(--bg-deep); border:none; padding:9px 14px; border-radius:var(--radius); cursor:pointer;}
+  .result-card{display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--bg-deep); border-left:4px solid var(--line-dim); border-radius:var(--radius); padding:10px 14px; margin-bottom:8px;}
+  .result-card.correct{border-left-color:#2FBD5C;}
+  .result-card.incorrect{border-left-color:#E0453C;}
+  .result-card .rc-teams{font-family:'Oswald',sans-serif; font-size:14px;}
+  .result-card .rc-teams .ball-icon{font-size:14px;}
+  .result-card .rc-score{font-family:'Space Mono',monospace; font-size:13px; color:var(--line-dim); text-align:right;}
+  .result-card .rc-status{font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px; font-family:'Space Mono',monospace;}
+  .result-card.correct .rc-status{color:#2FBD5C;}
+  .result-card.incorrect .rc-status{color:#E0453C;}
+  .results-empty{font-size:12.5px; color:var(--line-dim); padding:10px 0;}
+
+  /* ---- Parlay of the Day corner widget ---- */
+  .parlay-widget{
+    position:fixed; bottom:18px; right:18px; width:260px; max-width:calc(100vw - 36px);
+    background:var(--bg-panel); border:1px solid var(--pink); border-radius:var(--radius);
+    padding:16px; z-index:40; box-shadow:0 8px 30px rgba(0,0,0,0.5);
+  }
+  .parlay-widget .pw-title{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:13px; color:var(--pink); letter-spacing:0.5px; margin-bottom:2px;}
+  .parlay-widget .pw-sub{font-size:11px; color:var(--line-dim); margin-bottom:10px;}
+  .parlay-pick{font-size:12.5px; padding:6px 0; border-top:1px solid var(--bg-panel-2);}
+  .parlay-pick .ball-icon{font-size:13px;}
+  .parlay-locked{filter:blur(4px); user-select:none; pointer-events:none;}
+  .parlay-lock-overlay{position:absolute; inset:38px 14px 14px 14px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; text-align:center;}
+  .parlay-lock-overlay button{font-family:'Oswald',sans-serif; font-size:11.5px; text-transform:uppercase; background:var(--lime); color:var(--bg-deep); border:none; padding:7px 12px; border-radius:var(--radius); cursor:pointer;}
+  .parlay-lock-overlay span{font-size:10.5px; color:var(--line-dim);}
+  @media (max-width:480px){.parlay-widget{position:static; width:auto; max-width:none; margin:24px auto 0; max-width:640px;}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- AUTH SCREEN (Supabase magic-link email) -->
+  <div id="authScreen">
+    <div class="masthead"><h1>Final <span>Call</span></h1><span class="subtitle">SCORE PREDICTOR</span></div>
+    <div class="auth-card">
+      <h2>Sign in</h2>
+      <p>Enter your email — we'll send a one-time link, no password needed.</p>
+      <div class="field"><label>Email</label><input type="email" id="authEmail" autocomplete="email"></div>
+      <button class="btn-primary" id="authSubmit">Send sign-in link</button>
+      <div class="auth-error" id="authError"></div>
+      <div class="auth-status" id="authStatus"></div>
+      <div class="auth-note">Real accounts via Supabase Auth — no passwords stored by this app. Check your inbox after requesting the link.</div>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="appScreen" class="hidden">
+    <div class="masthead">
+      <h1>Final <span>Call</span></h1>
+      <div class="userbox"><span id="userEmailLabel"></span><br><a id="logoutLink">Log out</a></div>
+    </div>
+
+    <div class="plan-banner" id="planBanner">
+      <div class="txt"><b>Free plan</b> — score projections only. Upgrade for the Best Prop Play on every game.</div>
+      <button id="openSubscribeBtn">Go Pro</button>
+    </div>
+
+    <div class="sport-row" id="sportRow"></div>
+
+    <div class="teams">
+      <div class="team-panel away">
+        <div class="team-tag"><span class="ball-icon" id="awayBallIcon">🏈</span>Away</div>
+        <input type="text" id="awayName" value="Away Team">
+        <div class="stat-row"><label>Avg. scored</label><input type="number" id="awayFor" step="0.1"></div>
+        <div class="stat-row"><label>Avg. allowed</label><input type="number" id="awayAgainst" step="0.1"></div>
+      </div>
+      <div class="team-panel home">
+        <div class="team-tag"><span class="ball-icon" id="homeBallIcon">🏈</span>Home</div>
+        <input type="text" id="homeName" value="Home Team">
+        <div class="stat-row"><label>Avg. scored</label><input type="number" id="homeFor" step="0.1"></div>
+        <div class="stat-row"><label>Avg. allowed</label><input type="number" id="homeAgainst" step="0.1"></div>
+      </div>
+    </div>
+
+    <button class="predict-btn" id="predictBtn">Predict the score</button>
+
+    <div class="board" id="board">
+      <div class="board-label">Projected final</div>
+      <div class="board-score">
+        <span class="num" id="awayScore">0</span><span class="dash">–</span><span class="num" id="homeScore">0</span>
+      </div>
+      <div class="board-names"><span id="awayLabel">Away</span><span id="homeLabel">Home</span></div>
+      <div class="board-meta">
+        <div><b>Model:</b> blends each team's scoring average against the opponent's average allowed, with a small home-field bump.</div>
+        <div style="margin-top:6px;"><b>Confidence:</b> <span id="confText">—</span></div>
+        <div class="confidence-bar"><div class="confidence-fill" id="confFill" style="width:0%"></div></div>
+      </div>
+      <div class="prop-box">
+        <div class="prop-title">Best prop play</div>
+        <div id="propUnlocked">
+          <div class="prop-pick" id="propPick">—</div>
+          <div class="prop-sub" id="propSub">—</div>
+        </div>
+        <div id="propLockWrap" class="hidden" style="position:relative;">
+          <div class="prop-locked">
+            <div class="prop-pick">Take the Over 47.5</div>
+            <div class="prop-sub">Projected total sits well above the market number.</div>
+          </div>
+          <div class="prop-lock-overlay"><span>Prop plays are a Pro feature</span><button id="unlockPropBtn">Go Pro</button></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="footnote">Enter each team's season averages — this runs a simple statistical projection, not a guarantee. Everything here, including prop plays, is for entertainment purposes only — not betting advice.</div>
+  </div>
+
+  <!-- SUBSCRIBE MODAL -->
+  <div class="modal-overlay hidden" id="subscribeModal">
+    <div class="modal">
+      <h3>Go Pro</h3>
+      <p class="sub">Unlock the Best Prop Play on every game you predict.</p>
+      <div class="plan-toggle">
+        <div class="plan-option selected" data-plan="monthly" id="planMonthly"><div class="period">Monthly</div><div class="price">$6.99</div></div>
+        <div class="plan-option" data-plan="annual" id="planAnnual"><div class="period">Annual</div><div class="price">$59.99</div><div class="save">Save 28%</div></div>
+      </div>
+      <button class="btn-primary" id="subscribeConfirm">Continue to payment</button>
+      <div class="modal-close" id="subscribeCancel">Not now</div>
+      <div class="auth-note">You'll be redirected to Stripe's secure checkout. Your subscription unlocks automatically when payment completes.</div>
+    </div>
+  </div>
+
+  <!-- PUBLIC RESULTS CALENDAR — free, visible to everyone -->
+  <div class="results-section" id="resultsSection">
+    <h2>Past results</h2>
+    <p class="sub">Pick a date to see how our picks graded out.</p>
+    <div class="results-controls">
+      <input type="date" id="resultsDate">
+      <button id="loadResultsBtn">Show results</button>
+    </div>
+    <div id="resultsList"></div>
+  </div>
+
+  <!-- PARLAY OF THE DAY — Pro-gated corner widget -->
+  <div class="parlay-widget" id="parlayWidget" style="position:relative;">
+    <div class="pw-title">🔥 Parlay of the Day</div>
+    <div class="pw-sub">Today's top 3 picks, bundled</div>
+    <div id="parlayUnlocked"></div>
+    <div id="parlayLockWrap" class="hidden">
+      <div class="parlay-locked">
+        <div class="parlay-pick">⚾ Yankees ML</div>
+        <div class="parlay-pick">🏀 Lakers -4.5</div>
+        <div class="parlay-pick">⚽ Arsenal Over 2.5</div>
+      </div>
+      <div class="parlay-lock-overlay">
+        <span id="parlayLockMsg">Pro feature</span>
+        <button id="parlayUnlockBtn">Go Pro</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ====== CONFIG — your Supabase project ====== */
+const SUPABASE_URL = "https://mpwenzvsgiaeydtftall.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_mNbAuqsvabGviBaKuNu8jg_QXdlCEH_";
+/* ============================================================ */
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let currentUser = null;
+
+const authEmail = document.getElementById('authEmail');
+const authError = document.getElementById('authError');
+const authStatus = document.getElementById('authStatus');
+
+document.getElementById('authSubmit').addEventListener('click', async ()=>{
+  const email = authEmail.value.trim().toLowerCase();
+  authError.textContent = ''; authStatus.textContent = '';
+  if(!email){ authError.textContent = 'Enter your email.'; return; }
+  const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: window.location.origin } });
+  if(error){ authError.textContent = error.message; return; }
+  authStatus.textContent = 'Link sent — check your inbox and click it to sign in.';
+});
+
+document.getElementById('logoutLink').addEventListener('click', async ()=>{
+  await sb.auth.signOut();
+  location.reload();
+});
+
+sb.auth.onAuthStateChange((event, session)=>{
+  if(session && session.user){ currentUser = session.user; enterApp(); }
+});
+
+async function enterApp(){
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('appScreen').classList.remove('hidden');
+  document.getElementById('userEmailLabel').textContent = currentUser.email;
+  await refreshPlanUI();
+}
+
+async function refreshPlanUI(){
+  const { data } = await sb.from('subscriptions').select('status,plan').eq('user_email', currentUser.email).maybeSingle();
+  const subscribed = !!(data && data.status === 'active');
+  document.getElementById('planBanner').classList.toggle('hidden', subscribed);
+  updatePropLock(subscribed);
+  await loadParlay();
+}
+
+/* ---------------- subscribe modal + Stripe checkout ---------------- */
+let selectedPlan = 'monthly';
+const modal = document.getElementById('subscribeModal');
+function openModal(){ modal.classList.remove('hidden'); }
+function closeModal(){ modal.classList.add('hidden'); }
+document.getElementById('openSubscribeBtn').addEventListener('click', openModal);
+document.getElementById('unlockPropBtn').addEventListener('click', openModal);
+document.getElementById('subscribeCancel').addEventListener('click', closeModal);
+document.getElementById('planMonthly').addEventListener('click', ()=>selectPlan('monthly'));
+document.getElementById('planAnnual').addEventListener('click', ()=>selectPlan('annual'));
+function selectPlan(p){
+  selectedPlan = p;
+  document.getElementById('planMonthly').classList.toggle('selected', p==='monthly');
+  document.getElementById('planAnnual').classList.toggle('selected', p==='annual');
+}
+document.getElementById('subscribeConfirm').addEventListener('click', async ()=>{
+  const btn = document.getElementById('subscribeConfirm');
+  btn.disabled = true; btn.textContent = 'Redirecting…';
+  const res = await fetch('/api/create-checkout-session', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ email: currentUser.email, plan: selectedPlan })
+  });
+  const data = await res.json();
+  if(data.url){ window.location.href = data.url; }
+  else { btn.disabled = false; btn.textContent = 'Continue to payment'; alert('Checkout failed — try again.'); }
+});
+
+/* ---------------- sport predictor ---------------- */
+const sports = {
+  NFL:{for:23,against:23,home:1.5,round:1,icon:'🏈'}, NBA:{for:114,against:114,home:2.5,round:1,icon:'🏀'},
+  MLB:{for:4.5,against:4.5,home:0.3,round:1,icon:'⚾'}, NHL:{for:3.0,against:3.0,home:0.2,round:0,icon:'🏒'},
+  Soccer:{for:1.4,against:1.4,home:0.15,round:0,icon:'⚽'},
+  NCAAF:{for:28,against:28,home:2.5,round:1,icon:'🏈'}, NCAAB:{for:72,against:72,home:3.5,round:1,icon:'🏀'},
+  Other:{for:10,against:10,home:1,round:1,icon:'🎯'}
+};
+let currentSport = 'NFL';
+const sportRow = document.getElementById('sportRow');
+Object.keys(sports).forEach(key=>{
+  const btn = document.createElement('button');
+  btn.className = 'sport-btn' + (key===currentSport ? ' active' : '');
+  btn.innerHTML = `<span class="ball-icon">${sports[key].icon}</span>${key}`;
+  btn.dataset.sport = key;
+  btn.addEventListener('click', ()=>selectSport(key));
+  sportRow.appendChild(btn);
+});
+function selectSport(key){
+  currentSport = key;
+  document.querySelectorAll('.sport-btn').forEach(b=>b.classList.toggle('active', b.dataset.sport===key));
+  const preset = sports[key];
+  document.getElementById('awayFor').placeholder = preset.for;
+  document.getElementById('awayAgainst').placeholder = preset.against;
+  document.getElementById('homeFor').placeholder = preset.for;
+  document.getElementById('homeAgainst').placeholder = preset.against;
+  document.getElementById('board').classList.remove('show');
+  document.getElementById('awayBallIcon').textContent = preset.icon;
+  document.getElementById('homeBallIcon').textContent = preset.icon;
+}
+selectSport(currentSport);
+function num(id, fallback){ const v = parseFloat(document.getElementById(id).value); return isNaN(v) ? fallback : v; }
+function updatePropLock(subscribed){
+  document.getElementById('propUnlocked').classList.toggle('hidden', !subscribed);
+  document.getElementById('propLockWrap').classList.toggle('hidden', !!subscribed);
+}
+document.getElementById('predictBtn').addEventListener('click', async ()=>{
+  const preset = sports[currentSport];
+  const awayName = document.getElementById('awayName').value.trim() || 'Away Team';
+  const homeName = document.getElementById('homeName').value.trim() || 'Home Team';
+  const awayFor = num('awayFor', preset.for), awayAgainst = num('awayAgainst', preset.against);
+  const homeFor = num('homeFor', preset.for), homeAgainst = num('homeAgainst', preset.against);
+  let awayProj = (awayFor + homeAgainst) / 2;
+  let homeProj = (homeFor + awayAgainst) / 2 + preset.home;
+  const r = preset.round === 0 ? 0 : 1;
+  awayProj = r === 0 ? Math.round(awayProj) : Math.round(awayProj*10)/10;
+  homeProj = r === 0 ? Math.round(homeProj) : Math.round(homeProj*10)/10;
+  const spread = Math.abs(awayFor-preset.for) + Math.abs(homeFor-preset.for);
+  const confidence = Math.max(35, Math.min(92, 80 - spread));
+  document.getElementById('awayScore').textContent = awayProj;
+  document.getElementById('homeScore').textContent = homeProj;
+  document.getElementById('awayLabel').textContent = awayName;
+  document.getElementById('homeLabel').textContent = homeName;
+  document.getElementById('confText').textContent = Math.round(confidence) + '%';
+  document.getElementById('confFill').style.width = confidence + '%';
+  document.getElementById('board').classList.add('show');
+  const total = Math.round((awayProj + homeProj) * 2) / 2;
+  const margin = Math.abs(homeProj - awayProj);
+  const leader = homeProj >= awayProj ? homeName : awayName;
+  document.getElementById('propPick').textContent = `${leader} to cover a ${margin.toFixed(1)}-point edge`;
+  document.getElementById('propSub').textContent = `Projected total: ${total} — lean matches the scoring gap between these two teams.`;
+  await refreshPlanUI();
+});
+
+/* ---------------- public results calendar (free for everyone) ---------------- */
+const todayStr = new Date().toISOString().slice(0,10);
+document.getElementById('resultsDate').value = todayStr;
+document.getElementById('resultsDate').max = todayStr;
+document.getElementById('loadResultsBtn').addEventListener('click', ()=>loadResultsForDate(document.getElementById('resultsDate').value));
+
+async function loadResultsForDate(dateStr){
+  const list = document.getElementById('resultsList');
+  list.innerHTML = '<div class="results-empty">Loading…</div>';
+  const { data, error } = await sb
+    .from('daily_picks')
+    .select('sport,away_team,home_team,predicted_away_score,predicted_home_score,actual_away_score,actual_home_score,graded,correct')
+    .eq('game_date', dateStr)
+    .order('created_at', { ascending: true });
+
+  if(error || !data || data.length === 0){
+    list.innerHTML = '<div class="results-empty">No games logged for this date yet.</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  data.forEach(pick=>{
+    const icon = (sports[pick.sport] && sports[pick.sport].icon) || '🎯';
+    const card = document.createElement('div');
+    card.className = 'result-card' + (pick.graded ? (pick.correct ? ' correct' : ' incorrect') : '');
+    const status = pick.graded ? (pick.correct ? 'Hit' : 'Miss') : 'Pending';
+    const actual = pick.graded ? `Final: ${pick.actual_away_score}–${pick.actual_home_score}` : `Picked: ${pick.predicted_away_score}–${pick.predicted_home_score}`;
+    card.innerHTML = `
+      <div class="rc-teams"><span class="ball-icon">${icon}</span>${pick.away_team} @ ${pick.home_team}</div>
+      <div>
+        <div class="rc-score">${actual}</div>
+        <div class="rc-status">${status}</div>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+loadResultsForDate(todayStr);
+
+/* ---------------- parlay of the day (Pro-gated) ---------------- */
+async function loadParlay(){
+  const { data } = await sb
+    .from('daily_picks')
+    .select('sport,away_team,home_team,pick_summary')
+    .eq('game_date', todayStr)
+    .eq('is_parlay_pick', true)
+    .order('confidence', { ascending: false })
+    .limit(3);
+
+  const unlockedEl = document.getElementById('parlayUnlocked');
+  const lockWrap = document.getElementById('parlayLockWrap');
+
+  let subscribed = false;
+  if(currentUser){
+    const { data: sub } = await sb.from('subscriptions').select('status').eq('user_email', currentUser.email).maybeSingle();
+    subscribed = !!(sub && sub.status === 'active');
+  }
+
+  if(subscribed){
+    lockWrap.classList.add('hidden');
+    unlockedEl.classList.remove('hidden');
+    if(!data || data.length === 0){
+      unlockedEl.innerHTML = '<div class="parlay-pick">No parlay picks logged yet today.</div>';
+    } else {
+      unlockedEl.innerHTML = data.map(p=>{
+        const icon = (sports[p.sport] && sports[p.sport].icon) || '🎯';
+        return `<div class="parlay-pick"><span class="ball-icon">${icon}</span>${p.away_team} @ ${p.home_team} — ${p.pick_summary || 'Pick TBD'}</div>`;
+      }).join('');
+    }
+  } else {
+    unlockedEl.classList.add('hidden');
+    lockWrap.classList.remove('hidden');
+    document.getElementById('parlayLockMsg').textContent = currentUser ? 'Pro feature' : 'Sign in to unlock';
+  }
+}
+document.getElementById('parlayUnlockBtn').addEventListener('click', ()=>{
+  if(!currentUser){
+    document.getElementById('authScreen').scrollIntoView({behavior:'smooth'});
+  } else {
+    openModal();
+  }
+});
+
+/* ---------------- boot ---------------- */
+(async function boot(){
+  const { data: { session } } = await sb.auth.getSession();
+  if(session && session.user){ currentUser = session.user; enterApp(); }
+  await loadParlay();
+})();
+</script>
+</body>
+</html>
