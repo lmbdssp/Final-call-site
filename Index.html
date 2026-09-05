@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Final Call — Score Predictor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700;900&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --bg-deep:#0A0A0A; --bg-panel:#161616; --bg-panel-2:#2A2A2A;
+    --line-white:#FAFAFA; --line-dim:#8F8F8F;
+    --pink:#FFD400; --cyan:#FAFAFA; --lime:#FFD400; --orange:#C9A227;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg-deep);color:var(--line-white);font-family:'Inter',sans-serif;}
+  body{
+    background-image:
+      radial-gradient(ellipse at top, rgba(255,212,0,0.12), transparent 55%),
+      radial-gradient(ellipse at bottom, rgba(255,255,255,0.05), transparent 55%);
+    min-height:100vh; padding:32px 16px 60px;
+  }
+  .wrap{max-width:640px;margin:0 auto;}
+  .hidden{display:none !important;}
+  .masthead{display:flex; align-items:baseline; justify-content:space-between; border-bottom:1px solid var(--bg-panel-2); margin-bottom:24px; background:#0A0A0A; padding:10px 4px 14px;}
+  .masthead h1{font-family:'Oswald',sans-serif; font-weight:900; font-size:28px; letter-spacing:0.5px; margin:0; color:#FFFFFF; text-transform:uppercase; text-shadow:0 1px 2px rgba(0,0,0,0.9); display:flex; align-items:center; gap:10px;}
+  .masthead h1 span{color:var(--pink);}
+  .logo-mark{flex-shrink:0;}
+  .masthead .subtitle{font-family:'Space Mono',monospace; font-size:14px; color:var(--line-dim); letter-spacing:0.5px;}
+  .masthead .userbox{font-family:'Space Mono',monospace; font-size:11px; color:var(--line-dim); text-align:right;}
+  .masthead .userbox a{color:var(--cyan); cursor:pointer; text-decoration:underline;}
+  .auth-card{max-width:400px; margin:60px auto; background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:32px;}
+  .auth-card h2{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:22px; margin:0 0 4px;}
+  .auth-card p{font-size:13px; color:var(--line-dim); margin:0 0 24px;}
+  .field{margin-bottom:14px;}
+  .field label{display:block; font-size:12px; color:var(--line-dim); margin-bottom:6px;}
+  .field input{width:100%; background:var(--bg-deep); border:1px solid var(--bg-panel-2); color:var(--line-white); font-family:'Inter',sans-serif; font-size:14px; padding:10px 12px; border-radius:var(--radius); outline:none;}
+  .field input:focus{border-color:var(--cyan);}
+  .btn-primary{display:block; width:100%; font-family:'Oswald',sans-serif; font-weight:600; font-size:15px; letter-spacing:0.5px; text-transform:uppercase; background:var(--pink); color:var(--bg-deep); border:none; padding:13px; border-radius:var(--radius); cursor:pointer; margin-top:6px; transition:filter 0.15s;}
+  .btn-primary:hover{filter:brightness(1.1);}
+  .btn-primary:disabled{opacity:0.5; cursor:default;}
+  .auth-error{font-size:12.5px; color:var(--orange); margin-top:10px; min-height:16px;}
+  .auth-status{font-size:12.5px; color:var(--line-dim); margin-top:10px; min-height:16px;}
+  .auth-note{font-size:11px; color:var(--line-dim); margin-top:20px; line-height:1.6; border-top:1px solid var(--bg-panel-2); padding-top:14px;}
+  .plan-banner{display:flex; align-items:center; justify-content:space-between; gap:12px; background:linear-gradient(90deg, rgba(255,212,0,0.14), rgba(255,255,255,0.05)); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:12px 16px; margin-bottom:22px;}
+  .plan-banner .txt{font-size:12.5px; color:var(--line-dim);}
+  .plan-banner .txt b{color:var(--line-white);}
+  .plan-banner button{font-family:'Oswald',sans-serif; font-size:12.5px; text-transform:uppercase; letter-spacing:0.4px; background:var(--lime); color:var(--bg-deep); border:none; padding:9px 14px; border-radius:var(--radius); cursor:pointer; white-space:nowrap;}
+  .modal-overlay{position:fixed; inset:0; background:rgba(9,4,20,0.75); display:flex; align-items:center; justify-content:center; padding:16px; z-index:50;}
+  .modal{background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); max-width:400px; width:100%; padding:28px;}
+  .modal h3{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:20px; margin:0 0 4px;}
+  .modal p.sub{font-size:13px; color:var(--line-dim); margin:0 0 20px;}
+  .plan-toggle{display:flex; gap:8px; margin-bottom:18px;}
+  .plan-option{flex:1; border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:14px; cursor:pointer; text-align:center; transition:border-color 0.15s;}
+  .plan-option.selected{border-color:var(--cyan); background:rgba(255,255,255,0.08);}
+  .plan-option .period{font-family:'Oswald',sans-serif; font-size:13px; text-transform:uppercase; color:var(--line-dim);}
+  .plan-option .price{font-family:'Space Mono',monospace; font-size:22px; color:var(--line-white); margin-top:4px;}
+  .plan-option .save{font-size:11px; color:var(--lime); margin-top:4px;}
+  .modal-close{font-size:12.5px; color:var(--line-dim); text-align:center; margin-top:14px; cursor:pointer; text-decoration:underline;}
+  .sport-row{display:flex; flex-wrap:wrap; gap:8px; margin-bottom:24px;}
+  .sport-btn{font-family:'Oswald',sans-serif; font-size:14px; letter-spacing:0.3px; background:var(--bg-panel); color:var(--line-dim); border:1px solid var(--bg-panel); padding:8px 14px; border-radius:var(--radius); cursor:pointer; text-transform:uppercase; transition:border-color 0.15s, color 0.15s;}
+  .sport-btn:hover{color:var(--line-white);}
+  .sport-btn.active{border-color:var(--cyan); color:var(--cyan); background:rgba(255,255,255,0.08);}
+  .teams{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px;}
+  @media (max-width:480px){.teams{grid-template-columns:1fr;}}
+  .team-panel{background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:16px;}
+  .team-panel.away{border-top:3px solid var(--cyan);}
+  .team-panel.home{border-top:3px solid var(--pink);}
+
+  .games-list{display:flex; flex-direction:column; gap:14px; margin-bottom:24px;}
+  .game-card{background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:16px;}
+  .gc-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px;}
+  .gc-teams{font-family:'Oswald',sans-serif; font-size:16px; color:var(--line-white); letter-spacing:0.3px;}
+  .gc-time{font-family:'Space Mono',monospace; font-size:11px; color:var(--line-dim); text-transform:uppercase;}
+  .gc-markets{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:12px;}
+  .gc-market{background:var(--bg-deep); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:8px 6px; text-align:center;}
+  .gc-market.best{border-color:var(--pink);}
+  .gc-market .gm-label{font-family:'Space Mono',monospace; font-size:9.5px; color:var(--line-dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:5px;}
+  .gc-market .gm-pick{font-family:'Oswald',sans-serif; font-size:13px; color:var(--line-white); line-height:1.25;}
+  .gc-market .gm-odds{font-family:'Space Mono',monospace; font-size:11px; color:var(--line-dim); margin-top:3px;}
+  .gc-best-badge{display:inline-block; font-family:'Space Mono',monospace; font-size:9px; color:var(--bg-deep); background:var(--pink); text-transform:uppercase; letter-spacing:0.5px; padding:2px 6px; border-radius:2px; margin-top:4px;}
+  .gc-prop{border-top:1px solid var(--bg-panel-2); padding-top:10px; font-size:12.5px; color:var(--line-dim);}
+  .gc-prop b{color:var(--line-white); font-weight:500;}
+  .games-empty{color:var(--line-dim); font-size:13px; padding:20px 0; text-align:center;}
+  .team-tag{font-family:'Space Mono',monospace; font-size:11px; color:var(--line-dim); text-transform:uppercase; letter-spacing:1px; margin-bottom:8px;}
+  .team-panel input[type=text]{width:100%; background:transparent; border:none; border-bottom:1px solid var(--bg-panel-2); font-family:'Oswald',sans-serif; font-size:20px; color:var(--line-white); padding:4px 0 8px; margin-bottom:14px; outline:none;}
+  .team-panel input[type=text]:focus{border-bottom-color:var(--cyan);}
+  .stat-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;}
+  .stat-row label{font-size:13px; color:var(--line-dim); font-family:'Inter',sans-serif;}
+  .stat-row input[type=number]{width:72px; background:var(--bg-deep); border:1px solid var(--bg-panel-2); color:var(--line-white); font-family:'Space Mono',monospace; font-size:14px; padding:6px 8px; border-radius:var(--radius); outline:none; text-align:right;}
+  .stat-row input[type=number]:focus{border-color:var(--cyan);}
+  .predict-btn{display:block; width:100%; font-family:'Oswald',sans-serif; font-weight:600; font-size:16px; letter-spacing:1px; text-transform:uppercase; background:var(--pink); color:var(--bg-deep); border:none; padding:14px; border-radius:var(--radius); cursor:pointer; margin-bottom:28px; transition:filter 0.15s;}
+  .predict-btn:hover{filter:brightness(1.1);}
+  .predict-btn:active{filter:brightness(0.95);}
+  .board{background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:24px; text-align:center; display:none;}
+  .board.show{display:block;}
+  .board-label{font-family:'Space Mono',monospace; font-size:11px; color:var(--line-dim); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:14px;}
+  .board-score{display:flex; align-items:center; justify-content:center; gap:18px; font-family:'Space Mono',monospace; font-weight:700;}
+  .board-score .num{font-size:56px; color:var(--pink); min-width:70px; text-shadow:0 0 20px rgba(255,212,0,0.4);}
+  .board-score .dash{font-size:32px; color:var(--line-dim);}
+  .board-names{display:flex; justify-content:space-between; margin-top:10px; padding:0 4px;}
+  .board-names span{font-family:'Oswald',sans-serif; font-size:13px; color:var(--line-dim); text-transform:uppercase; letter-spacing:0.5px; max-width:150px;}
+  .board-meta{margin-top:18px; padding-top:14px; border-top:1px solid var(--bg-panel-2); font-size:12.5px; color:var(--line-dim); line-height:1.6; text-align:left;}
+  .board-meta b{color:var(--line-white); font-weight:500;}
+  .confidence-bar{height:4px; background:var(--bg-deep); border-radius:2px; overflow:hidden; margin-top:10px;}
+  .confidence-fill{height:100%; background:var(--lime);}
+  .prop-box{margin-top:18px; padding-top:16px; border-top:1px solid var(--bg-panel-2); text-align:left; position:relative;}
+  .prop-box .prop-title{font-family:'Space Mono',monospace; font-size:11px; color:var(--orange); text-transform:uppercase; letter-spacing:1.5px; margin-bottom:8px;}
+  .prop-box .prop-pick{font-family:'Oswald',sans-serif; font-size:17px; color:var(--line-white);}
+  .prop-box .prop-sub{font-size:12px; color:var(--line-dim); margin-top:4px;}
+  .prop-locked{filter:blur(5px); user-select:none; pointer-events:none;}
+  .prop-lock-overlay{position:absolute; inset:14px 0 0 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center;}
+  .prop-lock-overlay button{font-family:'Oswald',sans-serif; font-size:12px; text-transform:uppercase; letter-spacing:0.4px; background:var(--lime); color:var(--bg-deep); border:none; padding:8px 14px; border-radius:var(--radius); cursor:pointer;}
+  .prop-lock-overlay span{font-size:11.5px; color:var(--line-dim);}
+  .footnote{font-size:11.5px; color:var(--line-dim); margin-top:18px; line-height:1.6;}
+  .site-footer{max-width:520px; margin:32px auto 24px; padding:16px 20px 0; border-top:1px solid var(--bg-panel-2); font-size:10.5px; color:var(--line-dim); line-height:1.6; text-align:center;}
+
+  /* ---- Sport ball icons ---- */
+  .ball-icon{font-size:16px; margin-right:6px; vertical-align:middle;}
+
+  /* ---- Public results calendar ---- */
+  .results-section{max-width:640px; margin:40px auto 0; background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:20px;}
+  .results-section h2{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:17px; margin:0 0 4px;}
+  .results-section p.sub{font-size:12.5px; color:var(--line-dim); margin:0 0 16px;}
+  .results-controls{display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap;}
+  .results-controls input[type=date]{background:var(--bg-deep); border:1px solid var(--bg-panel-2); color:var(--line-white); font-family:'Space Mono',monospace; font-size:13px; padding:8px 10px; border-radius:var(--radius); outline:none;}
+  .results-controls button{font-family:'Oswald',sans-serif; font-size:12.5px; text-transform:uppercase; letter-spacing:0.4px; background:var(--pink); color:var(--bg-deep); border:none; padding:9px 14px; border-radius:var(--radius); cursor:pointer;}
+  .result-card{display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--bg-deep); border-left:4px solid var(--line-dim); border-radius:var(--radius); padding:10px 14px; margin-bottom:8px;}
+  .result-card.correct{border-left-color:#2FBD5C;}
+  .result-card.incorrect{border-left-color:#E0453C;}
+  .result-card .rc-teams{font-family:'Oswald',sans-serif; font-size:14px;}
+  .result-card .rc-teams .ball-icon{font-size:14px;}
+  .result-card .rc-prop{font-family:'Space Mono',monospace; font-size:10.5px; color:var(--orange); margin-top:3px; text-transform:none; letter-spacing:0;}
+  .result-card .rc-score{font-family:'Space Mono',monospace; font-size:13px; color:var(--line-dim); text-align:right;}
+  .result-card .rc-status{font-size:10.5px; text-transform:uppercase; letter-spacing:0.5px; font-family:'Space Mono',monospace;}
+  .result-card.correct .rc-status{color:#2FBD5C;}
+  .result-card.incorrect .rc-status{color:#E0453C;}
+  .results-empty{font-size:12.5px; color:var(--line-dim); padding:10px 0;}
+
+  /* ---- Today's Top 3 Picks widget ---- */
+  .parlay-widget{
+    width:auto; max-width:640px; margin:0 auto 20px;
+    background:var(--bg-panel); border:1px solid var(--pink); border-radius:var(--radius);
+    padding:16px; box-shadow:0 8px 30px rgba(0,0,0,0.5);
+  }
+  .parlay-widget .pw-title{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:13px; color:var(--pink); letter-spacing:0.5px; margin-bottom:2px;}
+  .parlay-widget .pw-sub{font-size:11px; color:var(--line-dim); margin-bottom:10px;}
+  .parlay-pick{font-size:12.5px; padding:6px 0; border-top:1px solid var(--bg-panel-2);}
+  .parlay-pick .ball-icon{font-size:13px;}
+  .parlay-locked{filter:blur(4px); user-select:none; pointer-events:none;}
+  .parlay-lock-overlay{position:absolute; inset:38px 14px 14px 14px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; text-align:center;}
+  .parlay-lock-overlay button{font-family:'Oswald',sans-serif; font-size:11.5px; text-transform:uppercase; background:var(--lime); color:var(--bg-deep); border:none; padding:7px 12px; border-radius:var(--radius); cursor:pointer;}
+  .parlay-lock-overlay span{font-size:10.5px; color:var(--line-dim);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- AUTH SCREEN (Supabase magic-link email) -->
+  <div id="authScreen">
+    <div class="masthead"><h1><svg class="logo-mark" width="28" height="28" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#FFD400" stroke-width="2.5"/><circle cx="16" cy="16" r="3" fill="#FFD400"/><line x1="16" y1="2" x2="16" y2="8" stroke="#FFD400" stroke-width="2.5"/><line x1="16" y1="24" x2="16" y2="30" stroke="#FFD400" stroke-width="2.5"/><line x1="2" y1="16" x2="8" y2="16" stroke="#FFD400" stroke-width="2.5"/><line x1="24" y1="16" x2="30" y2="16" stroke="#FFD400" stroke-width="2.5"/></svg>Final <span>Call</span></h1><span class="subtitle">SCORE PREDICTOR</span></div>
+    <div class="auth-card">
+      <h2>Sign in</h2>
+      <p>Enter your email — we'll send a one-time link, no password needed.</p>
+      <div class="field"><label>Email</label><input type="email" id="authEmail" autocomplete="email"></div>
+      <button class="btn-primary" id="authSubmit">Send sign-in link</button>
+      <div class="auth-error" id="authError"></div>
+      <div class="auth-status" id="authStatus"></div>
+      <div class="auth-note">Real accounts via Supabase Auth — no passwords stored by this app. Check your inbox after requesting the link.</div>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <div id="appScreen" class="hidden">
+    <div class="masthead">
+      <h1><svg class="logo-mark" width="28" height="28" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#FFD400" stroke-width="2.5"/><circle cx="16" cy="16" r="3" fill="#FFD400"/><line x1="16" y1="2" x2="16" y2="8" stroke="#FFD400" stroke-width="2.5"/><line x1="16" y1="24" x2="16" y2="30" stroke="#FFD400" stroke-width="2.5"/><line x1="2" y1="16" x2="8" y2="16" stroke="#FFD400" stroke-width="2.5"/><line x1="24" y1="16" x2="30" y2="16" stroke="#FFD400" stroke-width="2.5"/></svg>Final <span>Call</span></h1>
+      <div class="userbox"><span id="userEmailLabel"></span><br><a id="manageSubLink" class="hidden">Manage subscription</a><a id="logoutLink"> · Log out</a></div>
+    </div>
+
+    <div class="plan-banner" id="planBanner">
+      <div class="txt"><b>Free plan</b> — score projections only. Upgrade for the Best Prop Play on every game.</div>
+      <button id="openSubscribeBtn">Go Pro</button>
+    </div>
+
+    <!-- PARLAY OF THE DAY — Pro-gated widget, moved to top -->
+    <div class="parlay-widget" id="parlayWidget" style="position:relative;">
+      <div class="pw-title">Today's Top 3 Final Calls</div>
+      <div class="pw-sub" id="parlaySub">Bundled together</div>
+      <div id="parlayUnlocked"></div>
+      <div id="parlayLockWrap" class="hidden">
+        <div class="parlay-locked">
+          <div class="parlay-pick">⚾ Yankees ML</div>
+          <div class="parlay-pick">🏀 Lakers -4.5</div>
+          <div class="parlay-pick">⚽ Arsenal Over 2.5</div>
+        </div>
+        <div class="parlay-lock-overlay">
+          <span id="parlayLockMsg">Pro feature</span>
+          <button id="parlayUnlockBtn">Go Pro</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sport-row" id="sportRow"></div>
+
+    <div class="games-list" id="gamesList">
+      <div class="games-empty">Loading today's games…</div>
+    </div>
+
+    <div class="footnote">Final Call projections are generated from real sportsbook lines each morning — moneyline, spread, and total are all shown for every game, with our Final Call and best prop called out. This is not betting advice — the market can move, and no projection is a guarantee.</div>
+  </div>
+
+  <!-- SUBSCRIBE MODAL -->
+  <div class="modal-overlay hidden" id="subscribeModal">
+    <div class="modal">
+      <h3>Go Pro</h3>
+      <p class="sub">Unlock the Best Prop Play on every game you predict.</p>
+      <div class="plan-toggle">
+        <div class="plan-option selected" data-plan="monthly" id="planMonthly"><div class="period">Monthly</div><div class="price">$14.99</div></div>
+        <div class="plan-option" data-plan="annual" id="planAnnual"><div class="period">Annual</div><div class="price">$124.99</div><div class="save">Save 31%</div></div>
+      </div>
+      <button class="btn-primary" id="subscribeConfirm">Continue to payment</button>
+      <div class="modal-close" id="subscribeCancel">Not now</div>
+      <div class="auth-note">You'll be redirected to Stripe's secure checkout. Your subscription unlocks automatically when payment completes.</div>
+    </div>
+  </div>
+
+  <!-- PUBLIC RESULTS CALENDAR — free, visible to everyone -->
+  <div class="results-section" id="resultsSection">
+    <h2>Past results</h2>
+    <p class="sub">Pick a date to see how our Final Call projections graded out.</p>
+    <div class="results-controls">
+      <input type="date" id="resultsDate">
+      <button id="loadResultsBtn">Show results</button>
+    </div>
+    <div id="resultsList"></div>
+  </div>
+</div>
+
+<div class="site-footer">Final Call provides sports score projections for entertainment and informational purposes only. Nothing here is professional betting advice, and no result is guaranteed. Final Call is not affiliated with, endorsed by, or operated by any sportsbook. You must be of legal gambling age in your jurisdiction to use any information here for wagering purposes. If you or someone you know has a gambling problem, call 1-800-GAMBLER.
+  <div style="margin-top:10px;"><a href="/terms.html" style="color:var(--line-dim);">Terms of Service</a> &nbsp;·&nbsp; <a href="/privacy.html" style="color:var(--line-dim);">Privacy Policy</a></div>
+</div>
+
+<script>
+/* ====== CONFIG — your Supabase project ====== */
+const SUPABASE_URL = "https://mpwenzvsgiaeydtftall.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_mNbAuqsvabGviBaKuNu8jg_QXdlCEH_";
+/* ============================================================ */
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let currentUser = null;
+
+const authEmail = document.getElementById('authEmail');
+const authError = document.getElementById('authError');
+const authStatus = document.getElementById('authStatus');
+
+document.getElementById('authSubmit').addEventListener('click', async ()=>{
+  const email = authEmail.value.trim().toLowerCase();
+  authError.textContent = ''; authStatus.textContent = '';
+  if(!email){ authError.textContent = 'Enter your email.'; return; }
+  const { error } = await sb.auth.signInWithOtp({ email, options:{ emailRedirectTo: window.location.origin } });
+  if(error){ authError.textContent = error.message; return; }
+  authStatus.textContent = 'Link sent — check your inbox and click it to sign in.';
+});
+
+document.getElementById('logoutLink').addEventListener('click', async ()=>{
+  await sb.auth.signOut();
+  location.reload();
+});
+
+document.getElementById('manageSubLink').addEventListener('click', async ()=>{
+  const link = document.getElementById('manageSubLink');
+  const originalText = link.textContent;
+  link.textContent = 'Loading…';
+  try {
+    const res = await fetch('/api/create-portal-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: currentUser.email }),
+    });
+    const data = await res.json();
+    if (data.url) { window.location.href = data.url; }
+    else { link.textContent = originalText; alert('Could not open subscription management. Please try again.'); }
+  } catch (err) {
+    link.textContent = originalText;
+    alert('Could not open subscription management. Please try again.');
+  }
+});
+
+sb.auth.onAuthStateChange((event, session)=>{
+  if(session && session.user){ currentUser = session.user; enterApp(); }
+});
+
+async function enterApp(){
+  document.getElementById('authScreen').classList.add('hidden');
+  document.getElementById('appScreen').classList.remove('hidden');
+  document.getElementById('userEmailLabel').textContent = currentUser.email;
+  await refreshPlanUI();
+}
+
+async function refreshPlanUI(){
+  const { data } = await sb.from('subscriptions').select('status,plan').eq('user_email', currentUser.email).maybeSingle();
+  isSubscribed = !!(data && data.status === 'active');
+  document.getElementById('planBanner').classList.toggle('hidden', isSubscribed);
+  document.getElementById('manageSubLink').classList.toggle('hidden', !isSubscribed);
+  await loadGamesForSport(currentSport);
+  await loadParlay();
+}
+
+/* ---------------- subscribe modal + Stripe checkout ---------------- */
+let selectedPlan = 'monthly';
+const modal = document.getElementById('subscribeModal');
+function openModal(){ modal.classList.remove('hidden'); }
+function closeModal(){ modal.classList.add('hidden'); }
+document.getElementById('openSubscribeBtn').addEventListener('click', openModal);
+document.getElementById('subscribeCancel').addEventListener('click', closeModal);
+document.getElementById('planMonthly').addEventListener('click', ()=>selectPlan('monthly'));
+document.getElementById('planAnnual').addEventListener('click', ()=>selectPlan('annual'));
+function selectPlan(p){
+  selectedPlan = p;
+  document.getElementById('planMonthly').classList.toggle('selected', p==='monthly');
+  document.getElementById('planAnnual').classList.toggle('selected', p==='annual');
+}
+document.getElementById('subscribeConfirm').addEventListener('click', async ()=>{
+  const btn = document.getElementById('subscribeConfirm');
+  btn.disabled = true; btn.textContent = 'Redirecting…';
+  const res = await fetch('/api/create-checkout-session', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ email: currentUser.email, plan: selectedPlan })
+  });
+  const data = await res.json();
+  if(data.url){ window.location.href = data.url; }
+  else { btn.disabled = false; btn.textContent = 'Continue to payment'; alert('Checkout failed — try again.'); }
+});
+
+/* ---------------- sport tabs + today's games ---------------- */
+const todayStr = new Date().toISOString().slice(0,10);
+const sports = {
+  NFL:{icon:'🏈'}, NBA:{icon:'🏀'}, MLB:{icon:'⚾'}, NHL:{icon:'🏒'},
+  Soccer:{icon:'⚽'}, NCAAF:{icon:'🏈'}, NCAAB:{icon:'🏀'}
+};
+let currentSport = 'NFL';
+let isSubscribed = false;
+const sportRow = document.getElementById('sportRow');
+Object.keys(sports).forEach(key=>{
+  const btn = document.createElement('button');
+  btn.className = 'sport-btn' + (key===currentSport ? ' active' : '');
+  btn.innerHTML = `<span class="ball-icon">${sports[key].icon}</span>${key}`;
+  btn.dataset.sport = key;
+  btn.addEventListener('click', ()=>selectSport(key));
+  sportRow.appendChild(btn);
+});
+function selectSport(key){
+  currentSport = key;
+  document.querySelectorAll('.sport-btn').forEach(b=>b.classList.toggle('active', b.dataset.sport===key));
+  loadGamesForSport(key);
+}
+
+function marketBox(label, pick, odds, isBest, confidence){
+  const oddsStr = odds == null ? '' : (odds > 0 ? `+${odds}` : `${odds}`);
+  return `<div class="gc-market${isBest ? ' best' : ''}">
+    <div class="gm-label">${label}</div>
+    <div class="gm-pick">${pick || '—'}</div>
+    ${oddsStr ? `<div class="gm-odds">${oddsStr}</div>` : ''}
+    ${isBest ? `<div class="gc-best-badge">Final Call${confidence != null ? ` • ${confidence}%` : ''}</div>` : ''}
+  </div>`;
+}
+
+async function loadGamesForSport(sport){
+  const list = document.getElementById('gamesList');
+  list.innerHTML = '<div class="games-empty">Loading today\'s games…</div>';
+  const { data, error } = await sb
+    .from('daily_picks')
+    .select('sport,away_team,home_team,commence_time,ml_pick,ml_odds,spread_pick,spread_odds,total_pick,total_odds,best_pick_type,prop_pick,confidence')
+    .eq('game_date', todayStr)
+    .eq('sport', sport)
+    .order('commence_time', { ascending: true });
+
+  if(error || !data || data.length === 0){
+    list.innerHTML = '<div class="games-empty">No games logged for today yet — check back this morning.</div>';
+    return;
+  }
+
+  list.innerHTML = data.map(g=>{
+    const timeStr = g.commence_time ? new Date(g.commence_time).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : '';
+    const markets = marketBox('Moneyline', g.ml_pick, g.ml_odds, g.best_pick_type === 'Moneyline', g.confidence)
+      + marketBox('Spread', g.spread_pick, g.spread_odds, g.best_pick_type === 'Spread', g.confidence)
+      + marketBox('Total', g.total_pick, g.total_odds, g.best_pick_type === 'Total', g.confidence);
+    const propLine = isSubscribed
+      ? (g.prop_pick ? `<b>Prop projection:</b> ${g.prop_pick}` : 'No prop projection posted for this game yet.')
+      : `<b>Prop projection:</b> locked — <a href="#" class="prop-unlock-link">go Pro</a> to see it`;
+    return `<div class="game-card">
+      <div class="gc-head"><span class="gc-teams">${g.away_team} @ ${g.home_team}</span><span class="gc-time">${timeStr}</span></div>
+      <div class="gc-markets">${markets}</div>
+      <div class="gc-prop">${propLine}</div>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.prop-unlock-link').forEach(a=>a.addEventListener('click', (e)=>{ e.preventDefault(); openModal(); }));
+}
+loadGamesForSport(currentSport);
+
+/* ---------------- public results calendar (free for everyone) ---------------- */
+document.getElementById('resultsDate').value = todayStr;
+document.getElementById('resultsDate').max = todayStr;
+document.getElementById('loadResultsBtn').addEventListener('click', ()=>loadResultsForDate(document.getElementById('resultsDate').value));
+
+async function loadResultsForDate(dateStr){
+  const list = document.getElementById('resultsList');
+  list.innerHTML = '<div class="results-empty">Loading…</div>';
+  const { data, error } = await sb
+    .from('daily_picks')
+    .select('sport,away_team,home_team,predicted_away_score,predicted_home_score,actual_away_score,actual_home_score,graded,correct,prop_pick')
+    .eq('game_date', dateStr)
+    .order('created_at', { ascending: true });
+
+  if(error || !data || data.length === 0){
+    list.innerHTML = '<div class="results-empty">No games logged for this date yet.</div>';
+    return;
+  }
+
+  list.innerHTML = '';
+  data.forEach(pick=>{
+    const icon = (sports[pick.sport] && sports[pick.sport].icon) || '🎯';
+    const card = document.createElement('div');
+    card.className = 'result-card' + (pick.graded ? (pick.correct ? ' correct' : ' incorrect') : '');
+    const status = pick.graded ? (pick.correct ? 'Hit' : 'Miss') : 'Pending';
+    const actual = pick.graded ? `Final: ${pick.actual_away_score}–${pick.actual_home_score}` : `Projected: ${pick.predicted_away_score}–${pick.predicted_home_score}`;
+    card.innerHTML = `
+      <div class="rc-teams"><span class="ball-icon">${icon}</span>${pick.away_team} @ ${pick.home_team}${pick.prop_pick ? `<div class="rc-prop">Prop projection: ${pick.prop_pick}</div>` : ''}</div>
+      <div>
+        <div class="rc-score">${actual}</div>
+        <div class="rc-status">${status}</div>
+      </div>`;
+    list.appendChild(card);
+  });
+}
+loadResultsForDate(todayStr);
+
+/* ---------------- parlay of the day (Pro-gated) ---------------- */
+/* Converts American odds to a combined parlay American odds figure */
+function americanToDecimal(odds){ return odds > 0 ? 1 + odds/100 : 1 + 100/Math.abs(odds); }
+function decimalToAmerican(dec){ return dec >= 2 ? Math.round((dec-1)*100) : Math.round(-100/(dec-1)); }
+function combineParlayOdds(oddsArray){
+  if(!oddsArray.length || oddsArray.some(o => o == null)) return null;
+  const decimalProduct = oddsArray.reduce((acc,o)=> acc * americanToDecimal(o), 1);
+  const american = decimalToAmerican(decimalProduct);
+  return american > 0 ? `+${american}` : `${american}`;
+}
+
+async function loadParlay(){
+  const { data } = await sb
+    .from('daily_picks')
+    .select('sport,away_team,home_team,pick_summary,odds,confidence')
+    .eq('game_date', todayStr)
+    .eq('is_parlay_pick', true)
+    .order('confidence', { ascending: false })
+    .limit(3);
+
+  const unlockedEl = document.getElementById('parlayUnlocked');
+  const lockWrap = document.getElementById('parlayLockWrap');
+
+  const combined = data ? combineParlayOdds(data.map(p => p.odds)) : null;
+  document.getElementById('parlaySub').textContent = combined ? `Bundled together • ${combined}` : 'Bundled together';
+
+  let subscribed = false;
+  if(currentUser){
+    const { data: sub } = await sb.from('subscriptions').select('status').eq('user_email', currentUser.email).maybeSingle();
+    subscribed = !!(sub && sub.status === 'active');
+  }
+
+  if(subscribed){
+    lockWrap.classList.add('hidden');
+    unlockedEl.classList.remove('hidden');
+    if(!data || data.length === 0){
+      unlockedEl.innerHTML = '<div class="parlay-pick">No Final Calls logged yet today.</div>';
+    } else {
+      unlockedEl.innerHTML = data.map(p=>{
+        const icon = (sports[p.sport] && sports[p.sport].icon) || '🎯';
+        return `<div class="parlay-pick"><span class="ball-icon">${icon}</span>${p.away_team} @ ${p.home_team} — ${p.pick_summary || 'TBD'}${p.confidence != null ? ` • ${p.confidence}%` : ''}</div>`;
+      }).join('');
+    }
+  } else {
+    unlockedEl.classList.add('hidden');
+    lockWrap.classList.remove('hidden');
+    document.getElementById('parlayLockMsg').textContent = currentUser ? 'Pro feature' : 'Sign in to unlock';
+  }
+}
+document.getElementById('parlayUnlockBtn').addEventListener('click', ()=>{
+  if(!currentUser){
+    document.getElementById('authScreen').scrollIntoView({behavior:'smooth'});
+  } else {
+    openModal();
+  }
+});
+
+/* ---------------- boot ---------------- */
+(async function boot(){
+  const { data: { session } } = await sb.auth.getSession();
+  if(session && session.user){ currentUser = session.user; enterApp(); }
+  await loadParlay();
+})();
+</script>
+</body>
+</html>
