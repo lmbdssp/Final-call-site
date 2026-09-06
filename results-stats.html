@@ -6,6 +6,9 @@
   <style>
     body { background: #0a0a0a; color: white; font-family: monospace; padding: 20px; }
     h1 { color: #f5c518; }
+    a.back { color: #999; text-decoration: none; font-size: 14px; }
+    .summary { margin: 20px 0; padding: 15px; border: 1px solid #333; border-radius: 8px; }
+    .summary span { margin-right: 25px; }
     table { width: 100%; border-collapse: collapse; margin-top: 20px; }
     th, td { padding: 10px; text-align: left; border-bottom: 1px solid #333; }
     th { color: #f5c518; }
@@ -14,7 +17,9 @@
   </style>
 </head>
 <body>
+  <a class="back" href="/index.html">&larr; Back to Final Call</a>
   <h1>FINAL CALL — Daily Accuracy</h1>
+  <div class="summary" id="allTime">Loading all-time stats...</div>
   <table id="statsTable">
     <thead>
       <tr><th>Date</th><th>Hits</th><th>Misses</th><th>Total</th><th>Win Rate</th></tr>
@@ -38,6 +43,19 @@
             <td>${row.winRate}%</td>
           </tr>
         `).join('');
+
+        const totalHits = data.reduce((sum, r) => sum + r.hits, 0);
+        const totalMisses = data.reduce((sum, r) => sum + r.misses, 0);
+        const totalGames = totalHits + totalMisses;
+        const overallRate = totalGames > 0 ? ((totalHits / totalGames) * 100).toFixed(1) : '0.0';
+
+        document.getElementById('allTime').innerHTML = `
+          <span><strong style="color:#f5c518">ALL-TIME:</strong></span>
+          <span class="win">${totalHits} hits</span>
+          <span class="loss">${totalMisses} misses</span>
+          <span>${totalGames} total</span>
+          <span><strong>${overallRate}% win rate</strong></span>
+        `;
       })
       .catch(err => {
         document.getElementById('statsBody').innerHTML = '<tr><td colspan="5">Error loading stats</td></tr>';
