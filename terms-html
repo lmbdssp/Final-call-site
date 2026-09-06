@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Terms of Service — Final Call</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700;900&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-deep:#0A0A0A; --bg-panel:#161616; --bg-panel-2:#2A2A2A;
+    --line-white:#FAFAFA; --line-dim:#8F8F8F;
+    --pink:#FFD400; --cyan:#FAFAFA; --lime:#FFD400; --orange:#C9A227;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--bg-deep); color:var(--line-white); font-family:'Inter',sans-serif; margin:0; padding:0; line-height:1.6;}
+  .wrap{max-width:720px; margin:0 auto; padding:32px 20px 60px;}
+  a.back{font-family:'Space Mono',monospace; font-size:12px; color:var(--line-dim); text-decoration:none;}
+  h1{font-family:'Oswald',sans-serif; font-weight:900; font-size:26px; text-transform:uppercase; margin:20px 0 4px; color:var(--pink);}
+  .updated{font-family:'Space Mono',monospace; font-size:11px; color:var(--line-dim); margin-bottom:32px;}
+  h2{font-family:'Oswald',sans-serif; font-weight:600; font-size:16px; text-transform:uppercase; letter-spacing:0.3px; color:var(--line-white); margin:28px 0 8px; border-top:1px solid var(--bg-panel-2); padding-top:20px;}
+  p, li{font-size:14px; color:#D8D8D8;}
+  ul{padding-left:20px;}
+  a{color:var(--pink);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="/">&larr; Back to Final Call</a>
+  <h1>Terms of Service</h1>
+  <div class="updated">Last updated: September 2026</div>
+
+  <p>These Terms of Service ("Terms") govern your use of Final Call (the "Service"), operated as a sole proprietorship. By creating an account or purchasing a subscription, you agree to these Terms.</p>
+
+  <h2>1. Description of Service</h2>
+  <p>Final Call provides sports score projections, statistical projections, and related content ("Content") for entertainment and informational purposes only. Free accounts receive score projections and past-results tracking. Paid "Pro" subscribers additionally receive access to player prop suggestions and other premium Content.</p>
+
+  <h2>2. No Betting Advice</h2>
+  <p>Nothing on Final Call constitutes professional betting or gambling advice, financial advice, or a guarantee of any outcome. Content is generated from publicly available sportsbook lines and statistical models, and may be inaccurate, delayed, or incomplete. You are solely responsible for any decisions you make based on Content, including any wagers you place. Final Call is not a sportsbook, is not affiliated with any sportsbook, and does not accept, process, or facilitate wagers.</p>
+
+  <h2>3. Eligibility</h2>
+  <p>You must be at least 18 years old, or the age of majority in your jurisdiction, to use the Service. If you intend to use Content in connection with sports wagering, you are solely responsible for confirming that doing so is legal in your jurisdiction and that you meet any applicable legal gambling age requirement, which may be higher than 18 in some places.</p>
+
+  <h2>4. Subscriptions and Billing</h2>
+  <ul>
+    <li>Pro subscriptions are billed on a recurring basis (monthly or annual, as selected at signup) via our payment processor, Stripe.</li>
+    <li>Subscriptions automatically renew at the end of each billing period unless canceled before the renewal date.</li>
+    <li>You can cancel your subscription at any time through the "Manage subscription" option in your account, which opens a secure Stripe-hosted portal. Cancellation takes effect at the end of the current billing period; no partial refunds are issued for the remaining period unless required by law.</li>
+    <li>Prices are subject to change with notice; changes will apply to future billing cycles only.</li>
+  </ul>
+
+  <h2>5. Account Responsibilities</h2>
+  <p>You are responsible for maintaining the confidentiality of access to your account (via the email address used for sign-in) and for all activity that occurs under your account.</p>
+
+  <h2>6. Disclaimer of Warranties</h2>
+  <p>The Service and all Content are provided "as is" and "as available," without warranties of any kind, express or implied, including accuracy, completeness, or fitness for a particular purpose. Final Call does not guarantee uninterrupted or error-free operation of the Service.</p>
+
+  <h2>7. Limitation of Liability</h2>
+  <p>To the fullest extent permitted by law, Final Call and its owner shall not be liable for any indirect, incidental, special, consequential, or punitive damages, including but not limited to losses arising from wagers placed in reliance on Content, arising out of or related to your use of the Service.</p>
+
+  <h2>8. Termination</h2>
+  <p>We may suspend or terminate your access to the Service at our discretion, including for violation of these Terms. You may stop using the Service and cancel your subscription at any time.</p>
+
+  <h2>9. Changes to These Terms</h2>
+  <p>We may update these Terms from time to time. Continued use of the Service after changes take effect constitutes acceptance of the revised Terms.</p>
+
+  <h2>10. Governing Law</h2>
+  <p>These Terms are governed by the laws of the United States and the state in which the Service operator resides, without regard to conflict-of-law principles.</p>
+
+  <h2>11. Contact</h2>
+  <p>Questions about these Terms can be sent to <a href="mailto:lmbdssp@gmail.com">lmbdssp@gmail.com</a>.</p>
+</div>
+</body>
+</html>
