@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Final Call — Accuracy Stats</title>
+  <style>
+    body { background: #0a0a0a; color: white; font-family: monospace; padding: 20px; }
+    h1 { color: #f5c518; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { padding: 10px; text-align: left; border-bottom: 1px solid #333; }
+    th { color: #f5c518; }
+    .win { color: #4ade80; }
+    .loss { color: #f87171; }
+  </style>
+</head>
+<body>
+  <h1>FINAL CALL — Daily Accuracy</h1>
+  <table id="statsTable">
+    <thead>
+      <tr><th>Date</th><th>Hits</th><th>Misses</th><th>Total</th><th>Win Rate</th></tr>
+    </thead>
+    <tbody id="statsBody">
+      <tr><td colspan="5">Loading...</td></tr>
+    </tbody>
+  </table>
+
+  <script>
+    fetch('/api/stats')
+      .then(res => res.json())
+      .then(data => {
+        const body = document.getElementById('statsBody');
+        body.innerHTML = data.map(row => `
+          <tr>
+            <td>${row.date}</td>
+            <td class="win">${row.hits}</td>
+            <td class="loss">${row.misses}</td>
+            <td>${row.total}</td>
+            <td>${row.winRate}%</td>
+          </tr>
+        `).join('');
+      })
+      .catch(err => {
+        document.getElementById('statsBody').innerHTML = '<tr><td colspan="5">Error loading stats</td></tr>';
+      });
+  </script>
+</body>
+</html>
