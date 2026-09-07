@@ -147,7 +147,8 @@ async function fetchSportOdds(sportLabel, sportKey) {
     const propPick = await getBestProp(sportKey, game.id, sportLabel);
 
     picks.push({
-      game_date: game.commence_time.slice(0, 10),
+      game_date: new Date(new Date(game.commence_time).toLocaleString('en-US', { timeZone: 'America/New_York' })).toISOString().slice(0, 10),
+
       commence_time: game.commence_time,
       sport: sportLabel,
       away_team: game.away_team,
