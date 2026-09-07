@@ -44,7 +44,8 @@ export default async function handler(req, res) {
 
       const actualHome = Number(homeScoreObj.score);
       const actualAway = Number(awayScoreObj.score);
-      const gameDate = game.commence_time.slice(0, 10);
+      const gameDate = new Date(new Date(game.commence_time).toLocaleString('en-US', { timeZone: 'America/New_York' })).toISOString().slice(0, 10);
+
 
       const { data: rows } = await supabase
         .from('daily_picks')
