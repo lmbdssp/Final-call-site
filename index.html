@@ -73,6 +73,8 @@
   .game-card{background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:16px;}
   .gc-head{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px;}
   .gc-teams{font-family:'Oswald',sans-serif; font-size:16px; color:var(--line-white); letter-spacing:0.3px;}
+  .gc-league{font-family:'Space Mono',monospace; font-size:10px; color:var(--orange); text-transform:uppercase; letter-spacing:0.8px; margin-bottom:6px;}
+
   .gc-time{font-family:'Space Mono',monospace; font-size:11px; color:var(--line-dim); text-transform:uppercase;}
   .gc-markets{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:12px;}
   .gc-market{background:var(--bg-deep); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:8px 6px; text-align:center;}
@@ -379,7 +381,7 @@ async function loadGamesForSport(sport){
   list.innerHTML = '<div class="games-empty">Loading today\'s games…</div>';
   const { data, error } = await sb
     .from('daily_picks')
-    .select('sport,away_team,home_team,commence_time,ml_pick,ml_odds,spread_pick,spread_odds,total_pick,total_odds,best_pick_type,prop_pick,confidence')
+    .select('sport,league,away_team,home_team,commence_time,ml_pick,ml_odds,spread_pick,spread_odds,total_pick,total_odds,best_pick_type,prop_pick,confidence')
     .eq('game_date', todayStr)
     .eq('sport', sport)
     .order('commence_time', { ascending: true });
@@ -398,10 +400,13 @@ async function loadGamesForSport(sport){
     const finalCallLine = pickLocked
       ? `<div class="gc-locked-line"><b>Final Call:</b> locked — <a href="#" class="prop-unlock-link">go Pro</a> to see our projection</div>`
       : '';
-    const propLine = isSubscribed
+    const leagueTag = g.league ? `<div class="gc-league">${g.league}</div>` : '';
+const propLine = isSubscribed
       ? (g.prop_pick ? `<b>Prop projection:</b> ${g.prop_pick}` : 'No prop projection posted for this game yet.')
       : `<b>Prop projection:</b> locked — <a href="#" class="prop-unlock-link">go Pro</a> to see it`;
     return `<div class="game-card">
+    ${leagueTag}
+
       <div class="gc-head"><span class="gc-teams">${g.away_team} @ ${g.home_team}</span><span class="gc-time">${timeStr}</span></div>
       <div class="gc-markets">${markets}</div>
       ${finalCallLine}
