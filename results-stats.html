@@ -40,7 +40,8 @@
             <td class="win">${row.hits}</td>
             <td class="loss">${row.misses}</td>
             <td>${row.total}</td>
-            <td>${row.winRate}%</td>
+            <td>${row.winRate}%${row.winRate >= 70 ? ' 🔥' : ''}
+</td>
           </tr>
         `).join('');
 
@@ -54,8 +55,9 @@
           <span class="win">${totalHits} hits</span>
           <span class="loss">${totalMisses} misses</span>
           <span>${totalGames} total</span>
-          <span><strong>${overallRate}% win rate</strong></span>
-        `;
+          <span><strong>${overallRate}% win rate${overallRate >= 70 ? ' 🔥' : ''}</strong></span>
+
+        `;f
       })
       .catch(err => {
         document.getElementById('statsBody').innerHTML = '<tr><td colspan="5">Error loading stats</td></tr>';
