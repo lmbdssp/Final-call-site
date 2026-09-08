@@ -25,6 +25,16 @@ const SPORT_KEYS = {
   NCAAF: 'americanfootball_ncaaf',
   NCAAB: 'basketball_ncaab',
 };
+const COMPETITION_LABELS = {
+  soccer_epl: 'Premier League',
+  soccer_uefa_champs_league: 'Champions League',
+  soccer_uefa_europa_league: 'Europa League',
+  soccer_uefa_europa_conference_league: 'Conference League',
+  soccer_spain_la_liga: 'La Liga',
+  soccer_italy_serie_a: 'Serie A',
+  soccer_france_ligue_one: 'Ligue 1',
+};
+
 
 // One player-prop market per sport — keeps the extra API cost to one
 // market per game instead of pulling every available prop type.
@@ -160,6 +170,8 @@ async function fetchSportOdds(sportLabel, sportKey) {
 
       commence_time: game.commence_time,
       sport: sportLabel,
+      league: sportLabel === 'Soccer' ? (COMPETITION_LABELS[sportKey] || null) : null,
+
       away_team: game.away_team,
       home_team: game.home_team,
       predicted_away_score: predictedAway,
