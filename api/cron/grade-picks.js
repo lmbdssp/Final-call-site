@@ -8,7 +8,16 @@ const SPORT_KEYS = {
   NBA: 'basketball_nba',
   MLB: 'baseball_mlb',
   NHL: 'icehockey_nhl',
-  Soccer: 'soccer_epl',
+  Soccer: [
+  'soccer_epl',
+  'soccer_uefa_champs_league',
+  'soccer_uefa_europa_league',
+  'soccer_uefa_europa_conference_league',
+  'soccer_spain_la_liga',
+  'soccer_italy_serie_a',
+  'soccer_france_ligue_one',
+],
+
   NCAAF: 'americanfootball_ncaaf',
   NCAAB: 'basketball_ncaab',
 };
@@ -33,8 +42,11 @@ export default async function handler(req, res) {
 
   let gradedCount = 0;
 
-  for (const [label, key] of Object.entries(SPORT_KEYS)) {
+  for (const [label, keys] of Object.entries(SPORT_KEYS)) {
+  const keyList = Array.isArray(keys) ? keys : [keys];
+  for (const key of keyList) {
     const games = await fetchScores(key);
+
 
     for (const game of games) {
       if (!game.completed || !game.scores) continue;
@@ -88,6 +100,8 @@ export default async function handler(req, res) {
       }
     }
   }
+    }
+
 
   res.status(200).json({ graded: gradedCount });
 }
