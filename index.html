@@ -419,6 +419,12 @@ document.getElementById('resultsDate').max = todayStr;
 document.getElementById('loadResultsBtn').addEventListener('click', ()=>loadResultsForDate(document.getElementById('resultsDate').value));
 
 async function loadResultsForDate(dateStr){
+  const todayCutoff = new Date().toISOString().slice(0,10);
+if (dateStr >= todayCutoff) {
+  document.getElementById('resultsList').innerHTML = '<div class="results-empty">Results are available for past days only — check back once today\'s games are final.</div>';
+  return;
+}
+
   const list = document.getElementById('resultsList');
   list.innerHTML = '<div class="results-empty">Loading…</div>';
   const { data, error } = await sb
