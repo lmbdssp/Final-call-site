@@ -125,7 +125,8 @@
   .results-section{max-width:640px; margin:40px auto 0; background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:20px;}
   .results-section h2{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:17px; margin:0 0 4px;}
   .results-section p.sub{font-size:12.5px; color:var(--line-dim); margin:0 0 16px;}
-  .results-controls{display:flex; gap:10px; align-items:center; margin-bottom:16px; flex-wrap:wrap;}
+  .results-controls{display:flex; gap:10px; justify-content:space-between;
+align-items:center; margin-bottom:16px; flex-wrap:wrap;}
   .results-controls input[type=date]{background:var(--bg-deep); border:1px solid var(--bg-panel-2); color:var(--line-white); font-family:'Space Mono',monospace; font-size:13px; padding:8px 10px; border-radius:var(--radius); outline:none;}
   .results-controls button{font-family:'Oswald',sans-serif; font-size:12.5px; text-transform:uppercase; letter-spacing:0.4px; background:var(--pink); color:var(--bg-deep); border:none; padding:9px 14px; border-radius:var(--radius); cursor:pointer;}
   .result-card{display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--bg-deep); border-left:4px solid var(--line-dim); border-radius:var(--radius); padding:10px 14px; margin-bottom:8px;}
@@ -233,7 +234,8 @@
     <p class="sub">Choose a date to see how our Final Call projections graded out.</p>
     <div class="results-controls">
       <input type="date" id="resultsDate">
-      <button id="loadResultsBtn">Show results</button>
+      <button id="loadResultsBtn">Show results</button><a href="/results-stats.html" style="margin-left:auto; color:#999; align-self:center; font-size:12.5px;">Accuracy Stats →</a>
+
     </div>
     <div id="resultsList"></div>
   </div>
