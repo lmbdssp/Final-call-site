@@ -57,7 +57,7 @@
           <span>${totalGames} total</span>
           <span><strong>${overallRate}% win rate${overallRate >= 70 ? ' 🔥' : ''}</strong></span>
 
-        `;f
+        `;
       })
       .catch(err => {
         document.getElementById('statsBody').innerHTML = '<tr><td colspan="5">Error loading stats</td></tr>';
