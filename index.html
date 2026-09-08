@@ -419,9 +419,12 @@ const propLine = isSubscribed
 loadGamesForSport(currentSport);
 
 /* ---------------- public results calendar (free for everyone) ---------------- */
-document.getElementById('resultsDate').value = todayStr;
+const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0,10);
+document.getElementById('resultsDate').value = yesterdayStr;
 document.getElementById('resultsDate').max = todayStr;
 document.getElementById('loadResultsBtn').addEventListener('click', ()=>loadResultsForDate(document.getElementById('resultsDate').value));
+
+
 
 async function loadResultsForDate(dateStr){
   const todayCutoff = new Date().toISOString().slice(0,10);
@@ -459,7 +462,8 @@ if (dateStr >= todayCutoff) {
     list.appendChild(card);
   });
 }
-loadResultsForDate(todayStr);
+loadResultsForDate(yesterdayStr);
+
 
 /* ---------------- parlay of the day (Pro-gated) ---------------- */
 /* Converts American odds to a combined parlay American odds figure */
