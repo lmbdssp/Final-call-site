@@ -404,16 +404,18 @@ async function loadGamesForSport(sport){
       ? `<div class="gc-locked-line"><b>Final Call:</b> locked — <a href="#" class="prop-unlock-link">go Pro</a> to see our projection</div>`
       : '';
     const leagueTag = g.league ? `<div class="gc-league">${g.league}</div>` : '';
-const propLine = isSubscribed
+    const hasProps = sport !== 'Soccer' && sport !== 'MLB';
+    const propLine = isSubscribed
       ? (g.prop_pick ? `<b>Prop projection:</b> ${g.prop_pick}` : 'No prop projection posted for this game yet.')
       : `<b>Prop projection:</b> locked — <a href="#" class="prop-unlock-link">go Pro</a> to see it`;
+    const propSection = hasProps ? `<div class="gc-prop">${propLine}</div>` : '';
     return `<div class="game-card">
     ${leagueTag}
 
       <div class="gc-head"><span class="gc-teams">${g.away_team} @ ${g.home_team}</span><span class="gc-time">${timeStr}</span></div>
       <div class="gc-markets">${markets}</div>
       ${finalCallLine}
-      <div class="gc-prop">${propLine}</div>
+      ${propSection}
     </div>`;
   }).join('');
 
