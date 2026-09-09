@@ -81,7 +81,8 @@ function americanToProb(odds) {
 }
 
 async function fetchSportOdds(sportLabel, sportKey) {
-  const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=us&markets=h2h,spreads,totals&oddsFormat=american`;
+  const regions = sportLabel === 'Soccer' ? 'us,uk' : 'us';
+  const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=${regions}&markets=h2h,spreads,totals&oddsFormat=american`;
   const res = await fetch(url);
   if (!res.ok) {
     console.error(`Odds fetch failed for ${sportLabel}: ${res.status}`);
