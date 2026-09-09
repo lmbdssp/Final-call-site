@@ -343,7 +343,10 @@ document.getElementById('subscribeConfirm').addEventListener('click', async ()=>
 });
 
 /* ---------------- sport tabs + today's games ---------------- */
-const todayStr = new Date().toISOString().slice(0,10);
+function easternDateStr(date = new Date()) {
+  return date.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+const todayStr = easternDateStr();
 const sports = {
   NFL:{icon:'🏈'}, NBA:{icon:'🏀'}, MLB:{icon:'⚾'}, NHL:{icon:'🏒'},
   Soccer:{icon:'⚽'}, NCAAF:{icon:'🏈'}, NCAAB:{icon:'🏀'}
@@ -419,7 +422,7 @@ const propLine = isSubscribed
 loadGamesForSport(currentSport);
 
 /* ---------------- public results calendar (free for everyone) ---------------- */
-const yesterdayStr = new Date(Date.now() - 86400000).toISOString().slice(0,10);
+const yesterdayStr = easternDateStr(new Date(Date.now() - 86400000));
 document.getElementById('resultsDate').value = yesterdayStr;
 document.getElementById('resultsDate').max = todayStr;
 document.getElementById('loadResultsBtn').addEventListener('click', ()=>loadResultsForDate(document.getElementById('resultsDate').value));
@@ -427,7 +430,7 @@ document.getElementById('loadResultsBtn').addEventListener('click', ()=>loadResu
 
 
 async function loadResultsForDate(dateStr){
-  const todayCutoff = new Date().toISOString().slice(0,10);
+  const todayCutoff = easternDateStr();
 if (dateStr >= todayCutoff) {
   document.getElementById('resultsList').innerHTML = '<div class="results-empty">Results are available for past days only — check back once today\'s games are final.</div>';
   return;
