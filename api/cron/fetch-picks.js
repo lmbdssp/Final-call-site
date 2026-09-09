@@ -43,9 +43,7 @@ const PROP_MARKETS = {
   NCAAF: { market: 'player_anytime_td', label: 'Anytime TD' },
   NBA: { market: 'player_points', label: 'Points' },
   NCAAB: { market: 'player_points', label: 'Points' },
-  MLB: { market: 'batter_home_runs', label: 'Anytime HR' },
   NHL: { market: 'player_goal_scorer_anytime', label: 'Anytime Goal' },
-  Soccer: { market: 'player_shots_on_target', label: 'Shots on Target' },
 };
 
 function formatProp(outcome, label) {
