@@ -47,8 +47,10 @@ const PROP_MARKETS = {
 };
 
 function formatProp(outcome, label) {
-  if (outcome.point != null) {
-    return `${outcome.description} ${outcome.name} ${outcome.point} ${label}`;
+  if (outcome.description) {
+    return outcome.point != null
+      ? `${outcome.description} ${outcome.name} ${outcome.point} ${label}`
+      : `${outcome.description} ${label}`;
   }
   return `${outcome.name} ${label}`;
 }
