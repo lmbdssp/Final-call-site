@@ -57,6 +57,17 @@ function formatProp(outcome, label) {
   return `${outcome.name} ${label}`;
 }
 
+// Scans every bookmaker in the response (not just the first) for one that
+// has actually posted this market — coverage varies book to book, so
+// pinning to index 0 was silently dropping props/lines that other books had.
+function findMarket(bookmakers, key) {
+  for (const book of bookmakers || []) {
+    const market = book.markets?.find(m => m.key === key);
+    if (market?.outcomes?.length) return market;
+  }
+  return null;
+}
+
 async function getBestProp(sportKey, eventId, sportLabel) {
   const propConfig = PROP_MARKETS[sportLabel];
   if (!propConfig) return null;
@@ -66,9 +77,8 @@ async function getBestProp(sportKey, eventId, sportLabel) {
   if (!res.ok) return null; // prop market may not be posted yet for this game
 
   const data = await res.json();
-  const book = data.bookmakers?.[0];
-  const market = book?.markets?.find(m => m.key === propConfig.market);
-  if (!market || !market.outcomes?.length) return null;
+  const market = findMarket(data.bookmakers, propConfig.market);
+  if (!market) return null;
 
   let best = null;
   for (const outcome of market.outcomes) {
@@ -94,11 +104,10 @@ async function fetchSportOdds(sportLabel, sportKey) {
   const picks = [];
 
   for (const game of games) {
-    const book = game.bookmakers?.[0];
-    if (!book) continue;
-    const h2h = book.markets.find(m => m.key === 'h2h');
-    const spreadsMkt = book.markets.find(m => m.key === 'spreads');
-    const totalsMkt = book.markets.find(m => m.key === 'totals');
+    if (!game.bookmakers?.length) continue;
+    const h2h = findMarket(game.bookmakers, 'h2h');
+    const spreadsMkt = findMarket(game.bookmakers, 'spreads');
+    const totalsMkt = findMarket(game.bookmakers, 'totals');
     if (!h2h) continue;
 
     const homeOutcome = h2h.outcomes.find(o => o.name === game.home_team);
