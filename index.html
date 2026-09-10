@@ -491,16 +491,16 @@ function combineParlayOdds(oddsArray){
 async function loadParlay(){
   const { data } = await sb
     .from('daily_picks')
-    .select('sport,away_team,home_team,pick_summary,odds,confidence')
+    .select('sport,away_team,home_team,parlay_pick_summary,parlay_odds,parlay_confidence')
     .eq('game_date', todayStr)
     .eq('is_parlay_pick', true)
-    .order('confidence', { ascending: false })
+    .order('parlay_confidence', { ascending: false })
     .limit(3);
 
   const unlockedEl = document.getElementById('parlayUnlocked');
   const lockWrap = document.getElementById('parlayLockWrap');
 
-  const combined = data ? combineParlayOdds(data.map(p => p.odds)) : null;
+  const combined = data ? combineParlayOdds(data.map(p => p.parlay_odds)) : null;
   document.getElementById('parlaySub').textContent = combined ? `Bundled together • ${combined}` : 'Bundled together';
 
   let subscribed = false;
@@ -517,7 +517,7 @@ async function loadParlay(){
     } else {
       unlockedEl.innerHTML = data.map(p=>{
         const icon = (sports[p.sport] && sports[p.sport].icon) || '🎯';
-        return `<div class="parlay-pick"><span class="ball-icon">${icon}</span>${p.away_team} @ ${p.home_team} — ${p.pick_summary || 'TBD'}${p.confidence != null ? ` • ${p.confidence}%` : ''}</div>`;
+        return `<div class="parlay-pick"><span class="ball-icon">${icon}</span>${p.away_team} @ ${p.home_team} — ${p.parlay_pick_summary || 'TBD'}${p.parlay_confidence != null ? ` • ${p.parlay_confidence}%` : ''}</div>`;
       }).join('');
     }
   } else {

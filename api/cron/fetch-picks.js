@@ -157,12 +157,24 @@ async function fetchSportOdds(sportLabel, sportKey) {
     }
 
     // --- Best pick across all three markets, by confidence ---
+    // Cap how lopsided a pick can be before it's featured: straight game
+    // cards stay objective (max -200), while the parlay bundle can use a
+    // heavier favorite (max -500) as a safe anchor leg.
+    const MAX_STRAIGHT_ODDS = -200;
+    const MAX_PARLAY_ODDS = -500;
     const candidates = [
       { type: 'Moneyline', confidence: mlConfidence, summary: mlPickStr, odds: mlOdds, team: mlTeam, point: null, direction: null },
       { type: 'Spread', confidence: spreadConfidence, summary: spreadPickStr, odds: spreadOdds, team: spreadTeam, point: spreadPoint, direction: null },
       { type: 'Total', confidence: totalConfidence, summary: totalPickStr, odds: totalOdds, team: null, point: totalPoint, direction: totalDirection },
     ].filter(c => c.summary);
-    const best = candidates.reduce((a, b) => (b.confidence > a.confidence ? b : a));
+
+    const straightCandidates = candidates.filter(c => c.odds == null || c.odds > MAX_STRAIGHT_ODDS);
+    const best = (straightCandidates.length ? straightCandidates : candidates)
+      .reduce((a, b) => (b.confidence > a.confidence ? b : a));
+
+    const parlayCandidates = candidates.filter(c => c.odds == null || c.odds > MAX_PARLAY_ODDS);
+    const parlayBest = (parlayCandidates.length ? parlayCandidates : candidates)
+      .reduce((a, b) => (b.confidence > a.confidence ? b : a));
 
     let predictedHome = null, predictedAway = null;
     if (spreadsMkt && totalsMkt) {
@@ -202,6 +214,13 @@ async function fetchSportOdds(sportLabel, sportKey) {
       odds: best.odds,
       prop_pick: propPick,
       confidence: best.confidence,
+      parlay_pick_type: parlayBest.type,
+      parlay_pick_team: parlayBest.team,
+      parlay_pick_point: parlayBest.point,
+      parlay_pick_direction: parlayBest.direction,
+      parlay_pick_summary: `${parlayBest.summary} (${parlayBest.odds > 0 ? '+' : ''}${parlayBest.odds})`,
+      parlay_odds: parlayBest.odds,
+      parlay_confidence: parlayBest.confidence,
       is_parlay_pick: false,
     });
   }
@@ -228,7 +247,7 @@ for (const [label, keys] of Object.entries(SPORT_KEYS)) {
 
   const today = new Date().toISOString().slice(0, 10);
   const todaysPicks = allPicks.filter(p => p.game_date === today);
-  todaysPicks.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+  todaysPicks.sort((a, b) => (b.parlay_confidence || 0) - (a.parlay_confidence || 0));
   todaysPicks.slice(0, 3).forEach(p => { p.is_parlay_pick = true; });
 
   if (allPicks.length === 0) {
