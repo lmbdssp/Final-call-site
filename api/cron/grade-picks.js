@@ -16,6 +16,7 @@ const SPORT_KEYS = {
   'soccer_spain_la_liga',
   'soccer_italy_serie_a',
   'soccer_france_ligue_one',
+  'soccer_usa_mls',
 ],
 
   NCAAF: 'americanfootball_ncaaf',
