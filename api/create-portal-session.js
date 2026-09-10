@@ -10,6 +10,12 @@ export default async function handler(req, res) {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: 'Missing email' });
 
+  const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
+  const { data: allowed } = await supabase.rpc('check_rate_limit', { p_key: `portal:${ip}`, p_max_count: 5, p_window_seconds: 60 });
+  if (allowed === false) {
+    return res.status(429).json({ error: 'Too many requests — please try again in a minute.' });
+  }
+
   try {
     const { data: sub } = await supabase
       .from('subscriptions')
