@@ -4,6 +4,15 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Final Call — Score Predictor</title>
+<meta name="description" content="Final Call gives daily sports score projections built from real sportsbook lines — moneyline, spread, and total for NFL, NBA, MLB, NHL, Soccer, NCAAF, and NCAAB.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%23FFD400' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23FFD400'/%3E%3Cline x1='16' y1='2' x2='16' y2='8' stroke='%23FFD400' stroke-width='2.5'/%3E%3Cline x1='16' y1='24' x2='16' y2='30' stroke='%23FFD400' stroke-width='2.5'/%3E%3Cline x1='2' y1='16' x2='8' y2='16' stroke='%23FFD400' stroke-width='2.5'/%3E%3Cline x1='24' y1='16' x2='30' y2='16' stroke='%23FFD400' stroke-width='2.5'/%3E%3C/svg%3E">
+<meta property="og:title" content="Final Call — Score Predictor">
+<meta property="og:description" content="Daily sports score projections built from real sportsbook lines.">
+<meta property="og:url" content="https://finalcallpro.com/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Final Call — Score Predictor">
+<meta name="twitter:description" content="Daily sports score projections built from real sportsbook lines.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700;900&family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -63,6 +72,7 @@
   .sport-btn{font-family:'Oswald',sans-serif; font-size:14px; letter-spacing:0.3px; background:var(--bg-panel); color:var(--line-dim); border:1px solid var(--bg-panel); padding:8px 14px; border-radius:var(--radius); cursor:pointer; text-transform:uppercase; transition:border-color 0.15s, color 0.15s;}
   .sport-btn:hover{color:var(--line-white);}
   .sport-btn.active{border-color:var(--cyan); color:var(--cyan); background:rgba(255,255,255,0.08);}
+  .sport-btn.no-games{opacity:0.4;}
   .teams{display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px;}
   @media (max-width:480px){.teams{grid-template-columns:1fr;}}
   .team-panel{background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:16px;}
@@ -361,14 +371,25 @@ const sports = {
 let currentSport = 'NFL';
 let isSubscribed = false;
 const sportRow = document.getElementById('sportRow');
-Object.keys(sports).forEach(key=>{
-  const btn = document.createElement('button');
-  btn.className = 'sport-btn' + (key===currentSport ? ' active' : '');
-  btn.innerHTML = `<span class="ball-icon">${sports[key].icon}</span>${key}`;
-  btn.dataset.sport = key;
-  btn.addEventListener('click', ()=>selectSport(key));
-  sportRow.appendChild(btn);
-});
+async function getSportsWithGames(){
+  const { data } = await sb.from('daily_picks').select('sport').eq('game_date', todayStr);
+  return new Set((data || []).map(r => r.sport));
+}
+(async function initSportTabs(){
+  const sportsWithGames = await getSportsWithGames();
+  const firstWithGames = Object.keys(sports).find(k => sportsWithGames.has(k));
+  if (firstWithGames) { currentSport = firstWithGames; }
+  Object.keys(sports).forEach(key=>{
+    const hasGames = sportsWithGames.has(key);
+    const btn = document.createElement('button');
+    btn.className = 'sport-btn' + (key===currentSport ? ' active' : '') + (hasGames ? '' : ' no-games');
+    btn.innerHTML = `<span class="ball-icon">${sports[key].icon}</span>${key}`;
+    btn.dataset.sport = key;
+    btn.addEventListener('click', ()=>selectSport(key));
+    sportRow.appendChild(btn);
+  });
+  loadGamesForSport(currentSport);
+})();
 function selectSport(key){
   currentSport = key;
   document.querySelectorAll('.sport-btn').forEach(b=>b.classList.toggle('active', b.dataset.sport===key));
@@ -402,7 +423,7 @@ async function loadGamesForSport(sport){
   }
 
   list.innerHTML = data.map((g, i)=>{
-    const timeStr = g.commence_time ? new Date(g.commence_time).toLocaleTimeString([], {hour:'numeric', minute:'2-digit'}) : '';
+    const timeStr = g.commence_time ? new Date(g.commence_time).toLocaleTimeString([], {hour:'numeric', minute:'2-digit', timeZoneName:'short'}) : '';
     const pickLocked = !isSubscribed && i > 0;
     const markets = marketBox('Moneyline', g.ml_pick, g.ml_odds, g.best_pick_type === 'Moneyline', g.confidence, pickLocked)
       + marketBox('Spread', g.spread_pick, g.spread_odds, g.best_pick_type === 'Spread', g.confidence, pickLocked)
@@ -428,7 +449,6 @@ async function loadGamesForSport(sport){
 
   list.querySelectorAll('.prop-unlock-link').forEach(a=>a.addEventListener('click', (e)=>{ e.preventDefault(); openModal(); }));
 }
-loadGamesForSport(currentSport);
 
 /* ---------------- public results calendar (free for everyone) ---------------- */
 const yesterdayStr = easternDateStr(new Date(Date.now() - 86400000));
