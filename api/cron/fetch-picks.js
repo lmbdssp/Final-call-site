@@ -226,7 +226,10 @@ for (const [label, keys] of Object.entries(SPORT_KEYS)) {
     return res.status(200).json({ inserted: 0, note: 'No games returned — check quota/sport keys.' });
   }
 
-  const { error } = await supabase.from('daily_picks').insert(allPicks);
+  const { error } = await supabase.from('daily_picks').upsert(allPicks, {
+    onConflict: 'game_date,sport,away_team,home_team,commence_time',
+    ignoreDuplicates: true,
+  });
   if (error) {
     console.error(error);
     return res.status(500).json({ error: 'Insert failed', detail: error.message });
