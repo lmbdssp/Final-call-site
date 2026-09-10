@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import { fetchWithRetry } from '../lib/fetchWithRetry.js';
+import { sendAlert } from '../lib/alert.js';
 
 // Picks a single, reliable source for the daily feed: The Odds API.
 // It returns real fixtures, real bookmaker lines, AND final scores
@@ -73,7 +75,7 @@ async function getBestProp(sportKey, eventId, sportLabel) {
   if (!propConfig) return null;
 
   const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/events/${eventId}/odds/?apiKey=${ODDS_API_KEY}&regions=us&markets=${propConfig.market}&oddsFormat=american`;
-  const res = await fetch(url);
+  const res = await fetchWithRetry(url);
   if (!res.ok) return null; // prop market may not be posted yet for this game
 
   const data = await res.json();
@@ -95,7 +97,7 @@ function americanToProb(odds) {
 async function fetchSportOdds(sportLabel, sportKey) {
   const regions = sportLabel === 'Soccer' ? 'us,uk' : 'us';
   const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=${regions}&markets=h2h,spreads,totals&oddsFormat=american`;
-  const res = await fetch(url);
+  const res = await fetchWithRetry(url);
   if (!res.ok) {
     console.error(`Odds fetch failed for ${sportLabel}: ${res.status}`);
     return [];
@@ -228,39 +230,45 @@ async function fetchSportOdds(sportLabel, sportKey) {
 }
 
 export default async function handler(req, res) {
-  if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    if (req.headers['authorization'] !== `Bearer ${process.env.CRON_SECRET}`) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    if (!ODDS_API_KEY) {
+      return res.status(500).json({ error: 'ODDS_API_KEY is not set' });
+    }
+
+    let allPicks = [];
+    for (const [label, keys] of Object.entries(SPORT_KEYS)) {
+      const keyList = Array.isArray(keys) ? keys : [keys];
+      for (const key of keyList) {
+        const picks = await fetchSportOdds(label, key);
+        allPicks = allPicks.concat(picks);
+      }
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    const todaysPicks = allPicks.filter(p => p.game_date === today);
+    todaysPicks.sort((a, b) => (b.parlay_confidence || 0) - (a.parlay_confidence || 0));
+    todaysPicks.slice(0, 3).forEach(p => { p.is_parlay_pick = true; });
+
+    if (allPicks.length === 0) {
+      await sendAlert('fetch-picks returned zero games', 'Check Odds API quota/keys.');
+      return res.status(200).json({ inserted: 0, note: 'No games returned — check quota/sport keys.' });
+    }
+
+    const { error } = await supabase.from('daily_picks').upsert(allPicks, {
+      onConflict: 'sport,away_team,home_team,commence_time',
+    });
+    if (error) {
+      console.error(error);
+      return res.status(500).json({ error: 'Insert failed', detail: error.message });
+    }
+
+    res.status(200).json({ inserted: allPicks.length, parlayPicks: todaysPicks.slice(0, 3).length });
+  } catch (err) {
+    console.error(err);
+    await sendAlert('fetch-picks cron failed', err.message || String(err));
+    return res.status(500).json({ error: 'Internal error' });
   }
-  if (!ODDS_API_KEY) {
-    return res.status(500).json({ error: 'ODDS_API_KEY is not set' });
-  }
-
-  let allPicks = [];
-for (const [label, keys] of Object.entries(SPORT_KEYS)) {
-  const keyList = Array.isArray(keys) ? keys : [keys];
-  for (const key of keyList) {
-    const picks = await fetchSportOdds(label, key);
-    allPicks = allPicks.concat(picks);
-  }
-}
-
-
-  const today = new Date().toISOString().slice(0, 10);
-  const todaysPicks = allPicks.filter(p => p.game_date === today);
-  todaysPicks.sort((a, b) => (b.parlay_confidence || 0) - (a.parlay_confidence || 0));
-  todaysPicks.slice(0, 3).forEach(p => { p.is_parlay_pick = true; });
-
-  if (allPicks.length === 0) {
-    return res.status(200).json({ inserted: 0, note: 'No games returned — check quota/sport keys.' });
-  }
-
-  const { error } = await supabase.from('daily_picks').upsert(allPicks, {
-    onConflict: 'sport,away_team,home_team,commence_time',
-  });
-  if (error) {
-    console.error(error);
-    return res.status(500).json({ error: 'Insert failed', detail: error.message });
-  }
-
-  res.status(200).json({ inserted: allPicks.length, parlayPicks: todaysPicks.slice(0, 3).length });
 }
