@@ -237,7 +237,6 @@ for (const [label, keys] of Object.entries(SPORT_KEYS)) {
 
   const { error } = await supabase.from('daily_picks').upsert(allPicks, {
     onConflict: 'game_date,sport,away_team,home_team,commence_time',
-    ignoreDuplicates: true,
   });
   if (error) {
     console.error(error);
