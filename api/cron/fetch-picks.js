@@ -110,19 +110,25 @@ async function fetchSportOdds(sportLabel, sportKey) {
     const h2h = findMarket(game.bookmakers, 'h2h');
     const spreadsMkt = findMarket(game.bookmakers, 'spreads');
     const totalsMkt = findMarket(game.bookmakers, 'totals');
-    if (!h2h) continue;
+    // Skip only if NO market at all is posted — a game with just a
+    // Spread or Total (common for lopsided FBS-vs-FCS-style mismatches
+    // where books skip posting a Moneyline) should still show up.
+    if (!h2h && !spreadsMkt && !totalsMkt) continue;
 
-    const homeOutcome = h2h.outcomes.find(o => o.name === game.home_team);
-    const awayOutcome = h2h.outcomes.find(o => o.name === game.away_team);
-    if (!homeOutcome || !awayOutcome) continue;
-
-    // --- Moneyline candidate ---
-    const homeProb = americanToProb(homeOutcome.price);
-    const awayProb = americanToProb(awayOutcome.price);
-    const mlTeam = homeProb >= awayProb ? game.home_team : game.away_team;
-    const mlOdds = homeProb >= awayProb ? homeOutcome.price : awayOutcome.price;
-    const mlConfidence = Math.round(Math.max(homeProb, awayProb) * 100);
-    const mlPickStr = `${mlTeam} ML`;
+    // --- Moneyline candidate (only if a h2h market was posted) ---
+    let mlConfidence = 0, mlPickStr = null, mlOdds = null, mlTeam = null;
+    if (h2h) {
+      const homeOutcome = h2h.outcomes.find(o => o.name === game.home_team);
+      const awayOutcome = h2h.outcomes.find(o => o.name === game.away_team);
+      if (homeOutcome && awayOutcome) {
+        const homeProb = americanToProb(homeOutcome.price);
+        const awayProb = americanToProb(awayOutcome.price);
+        mlTeam = homeProb >= awayProb ? game.home_team : game.away_team;
+        mlOdds = homeProb >= awayProb ? homeOutcome.price : awayOutcome.price;
+        mlConfidence = Math.round(Math.max(homeProb, awayProb) * 100);
+        mlPickStr = `${mlTeam} ML`;
+      }
+    }
 
     // --- Spread candidate (which side the market leans, via juice) ---
     let spreadConfidence = 0, spreadPickStr = null, spreadOdds = null, spreadTeam = null, spreadPoint = null;
@@ -169,6 +175,7 @@ async function fetchSportOdds(sportLabel, sportKey) {
       { type: 'Spread', confidence: spreadConfidence, summary: spreadPickStr, odds: spreadOdds, team: spreadTeam, point: spreadPoint, direction: null },
       { type: 'Total', confidence: totalConfidence, summary: totalPickStr, odds: totalOdds, team: null, point: totalPoint, direction: totalDirection },
     ].filter(c => c.summary);
+    if (candidates.length === 0) continue; // no usable market at all — nothing to show for this game
 
     const straightCandidates = candidates.filter(c => c.odds == null || c.odds > MAX_STRAIGHT_ODDS);
     const best = (straightCandidates.length ? straightCandidates : candidates)
