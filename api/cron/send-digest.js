@@ -43,7 +43,7 @@ export default async function handler(req, res) {
           from: 'Final Call <picks@finalcallpro.com>',
           to: sub.user_email,
           subject: `Today's Final Calls — ${today}`,
-          html: `<h2>Today's Top Picks</h2><ul>${pickListHtml}</ul><p><a href="https://finalcallpro.com/">See all games</a></p><hr style="margin-top:24px;border:none;border-top:1px solid #333;"><p style="font-size:11px;color:#888;">Final Call, Inc. — you're receiving this because you have an active Final Call Pro subscription.<br><a href="${unsubUrl}" style="color:#888;">Unsubscribe from this daily email</a> (your Pro subscription stays active).</p>`,
+          html: `<h2>Today's Top Picks</h2><ul>${pickListHtml}</ul><p><a href="https://finalcallpro.com/">See all games</a></p><hr style="margin-top:24px;border:none;border-top:1px solid #333;"><p style="font-size:11px;color:#888;">Final Call, Miami, FL, USA — you're receiving this because you have an active Final Call Pro subscription.<br><a href="${unsubUrl}" style="color:#888;">Unsubscribe from this daily email</a> (your Pro subscription stays active).</p>`,
         }),
       });
       sent++;
