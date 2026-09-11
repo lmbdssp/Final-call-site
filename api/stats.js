@@ -3,10 +3,15 @@ import { createClient } from '@supabase/supabase-js';
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
 export default async function handler(req, res) {
+  // Only count picks a bettor would realistically take. Heavy favorites
+  // (worse than -200) were featured before the odds cap shipped and would
+  // otherwise inflate the published win rate.
+  const MAX_STRAIGHT_ODDS = -200;
   const { data: rows, error } = await supabase
     .from('daily_picks')
-    .select('game_date, correct')
+    .select('game_date, correct, odds')
     .eq('graded', true)
+    .or(`odds.is.null,odds.gt.${MAX_STRAIGHT_ODDS}`)
     .order('game_date', { ascending: false });
 
   if (error) {
