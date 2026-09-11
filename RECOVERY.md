@@ -61,9 +61,10 @@ during setup.
 | `/api/cron/fetch-picks` | `0 9 * * *` | Pull odds, compute picks, upsert into `daily_picks` |
 | `/api/cron/grade-picks` | `0 10 * * *` | Grade finished games against final scores |
 | `/api/cron/send-digest` | `30 9 * * *` | Email top picks to active, non-opted-out subscribers |
+| `/api/cron/backup-db` | `0 8 * * 0` | Weekly DB snapshot emailed to ALERT_EMAIL |
 
 Manual run: Vercel → Project → Settings → Cron Jobs → **Run**.
-All three authenticate with `Bearer ${CRON_SECRET}`.
+All four authenticate with `Bearer ${CRON_SECRET}`.
 
 ---
 
