@@ -48,7 +48,7 @@ export default async function handler(req, res) {
         stripe_subscription_id: session.subscription,
         status: subscription.status,
         plan,
-        current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+        current_period_end: new Date(subscription.items.data[0].current_period_end * 1000).toISOString(),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'user_email' });
 
@@ -61,7 +61,7 @@ export default async function handler(req, res) {
         .update({
           status: subscription.status,
           plan,
-          current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+          current_period_end: new Date(subscription.items.data[0].current_period_end * 1000).toISOString(),
           updated_at: new Date().toISOString(),
         })
         .eq('stripe_customer_id', subscription.customer);
