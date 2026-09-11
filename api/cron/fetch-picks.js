@@ -22,6 +22,7 @@ const SPORT_KEYS = {
   'soccer_spain_la_liga',
   'soccer_italy_serie_a',
   'soccer_france_ligue_one',
+  'soccer_germany_bundesliga',
   'soccer_usa_mls',
 ],
 
@@ -36,6 +37,7 @@ const COMPETITION_LABELS = {
   soccer_spain_la_liga: 'La Liga',
   soccer_italy_serie_a: 'Serie A',
   soccer_france_ligue_one: 'Ligue 1',
+  soccer_germany_bundesliga: 'Bundesliga',
   soccer_usa_mls: 'MLS',
 };
 
