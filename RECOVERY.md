@@ -1,6 +1,6 @@
 # Final Call — Recovery & Operations Runbook
 
-Last updated: September 11, 2026
+Last updated: September 12, 2026
 
 This document is what you need to rebuild or repair finalcallpro.com.
 **It contains no secrets.** Where a secret is needed, it says where to get it.
@@ -85,6 +85,16 @@ All four authenticate with `Bearer ${CRON_SECRET}`.
 
 **Function:** `check_rate_limit(text, int, int)` — sliding-window limiter used by the
 checkout and portal endpoints. Has `search_path` pinned to `public, pg_temp`.
+
+**Columns worth knowing on `daily_picks`:**
+- `best_pick_*` vs `parlay_pick_*` — the straight card pick and the parlay leg are
+  chosen separately (different odds caps), so they can differ on the same game.
+- `correct` vs `parlay_correct` — graded independently for the same reason. Grading
+  both happens in one pass in `grade-picks.js`.
+- `value_edge` — percentage points by which the best available price beats the
+  de-vigged consensus. Positive means the price pays more than it should.
+- `best_book` / `books_counted` — which bookmaker offered that price, and how many
+  books went into the consensus. Collected but not yet displayed anywhere.
 
 **Owner comp account:** `subscriptions` holds a row for `lmbdssp@gmail.com` with
 `status='active'`, `plan='pro'`, and **null Stripe IDs**. This is intentional — it grants
