@@ -64,7 +64,7 @@ export default async function handler(req, res) {
 
           const { data: rows } = await supabase
             .from('daily_picks')
-            .select('id,best_pick_type,best_pick_team,best_pick_point,best_pick_direction')
+            .select('id,best_pick_type,best_pick_team,best_pick_point,best_pick_direction,parlay_pick_type,parlay_pick_team,parlay_pick_point,parlay_pick_direction')
             .eq('sport', label)
             .eq('game_date', gameDate)
             .eq('home_team', game.home_team)
@@ -77,26 +77,33 @@ export default async function handler(req, res) {
           const actualTotal = actualHome + actualAway;
           const homeMargin = actualHome - actualAway; // positive if home won, negative if away won
 
-          for (const row of rows) {
-            let correct;
-            if (row.best_pick_type === 'Total') {
-              correct = row.best_pick_direction === 'Over'
-                ? actualTotal > row.best_pick_point
-                : actualTotal < row.best_pick_point;
-            } else if (row.best_pick_type === 'Spread') {
-              const teamMargin = row.best_pick_team === game.home_team ? homeMargin : -homeMargin;
-              correct = teamMargin + Number(row.best_pick_point) > 0;
+          function gradePick(type, team, point, direction) {
+            if (type === 'Total') {
+              return direction === 'Over' ? actualTotal > point : actualTotal < point;
+            } else if (type === 'Spread') {
+              const teamMargin = team === game.home_team ? homeMargin : -homeMargin;
+              return teamMargin + Number(point) > 0;
             } else {
               // Moneyline (or any legacy row without a type — treat as moneyline)
-              const pickedHome = row.best_pick_team === game.home_team;
-              correct = pickedHome ? homeWon : !homeWon;
+              const pickedHome = team === game.home_team;
+              return pickedHome ? homeWon : !homeWon;
             }
+          }
+
+          for (const row of rows) {
+            const correct = gradePick(row.best_pick_type, row.best_pick_team, row.best_pick_point, row.best_pick_direction);
+            // Parlay legs can differ from the straight pick (parlay allows
+            // heavier favorites, up to -500 vs -200), so grade separately.
+            const parlay_correct = row.parlay_pick_type
+              ? gradePick(row.parlay_pick_type, row.parlay_pick_team, row.parlay_pick_point, row.parlay_pick_direction)
+              : null;
 
             await supabase.from('daily_picks').update({
               actual_home_score: actualHome,
               actual_away_score: actualAway,
               graded: true,
               correct,
+              parlay_correct,
             }).eq('id', row.id);
 
             gradedCount++;
