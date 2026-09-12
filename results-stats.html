@@ -45,7 +45,7 @@
             <td class="win">${row.hits}</td>
             <td class="loss">${row.misses}</td>
             <td>${row.total}</td>
-            <td>${row.winRate != null ? row.winRate + '%' + (row.winRate >= 70 ? ' 🔥' : row.winRate >= 50 ? ' 👍' : '') : '—'}</td>
+            <td>${row.winRate != null ? row.winRate + '%' + (row.winRate >= 70 ? ' 🔥' : row.winRate >= 50 ? ' 👍' : ' 😢') : '—'}</td>
             <td>${parlayCell}</td>
           </tr>
         `;
@@ -61,7 +61,7 @@
           <span class="win">${totalHits} hits</span>
           <span class="loss">${totalMisses} misses</span>
           <span>${totalGames} total</span>
-          <span><strong>${overallRate}% win rate${overallRate >= 70 ? ' 🔥' : overallRate >= 50 ? ' 👍' : ''}</strong></span>
+          <span><strong>${overallRate}% win rate${overallRate >= 70 ? ' 🔥' : overallRate >= 50 ? ' 👍' : ' 😢'}</strong></span>
 
         `;
       })
