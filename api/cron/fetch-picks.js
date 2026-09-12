@@ -185,6 +185,9 @@ async function fetchSportOdds(sportLabel, sportKey) {
 
   for (const game of games) {
     if (!game.bookmakers?.length) continue;
+    // Never re-pick a game that is already underway. A later refresh run
+    // would otherwise overwrite a locked-in pick using live in-game odds.
+    if (new Date(game.commence_time) <= new Date()) continue;
     const h2hEntries = collectMarkets(game.bookmakers, 'h2h');
     const spreadEntriesAll = collectMarkets(game.bookmakers, 'spreads');
     const totalEntriesAll = collectMarkets(game.bookmakers, 'totals');
@@ -330,10 +333,29 @@ export default async function handler(req, res) {
       }
     }
 
-    const today = new Date().toISOString().slice(0, 10);
-    const todaysPicks = allPicks.filter(p => p.game_date === today);
-    todaysPicks.sort((a, b) => (b.parlay_confidence || 0) - (a.parlay_confidence || 0));
-    todaysPicks.slice(0, 3).forEach(p => { p.is_parlay_pick = true; });
+    // game_date is computed in Eastern, so "today" must be too.
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+
+    // The parlay is locked at the first run of the day. Later refresh runs
+    // carry that selection forward rather than reshuffling it — some of the
+    // morning's legs may already be underway, and swapping them would
+    // invalidate a bundle the customer has already seen (and possibly bet).
+    const { data: existingParlay } = await supabase
+      .from('daily_picks')
+      .select('sport,away_team,home_team')
+      .eq('game_date', today)
+      .eq('is_parlay_pick', true);
+
+    if (existingParlay && existingParlay.length) {
+      const locked = new Set(existingParlay.map(p => `${p.sport}|${p.away_team}|${p.home_team}`));
+      allPicks.forEach(p => {
+        if (locked.has(`${p.sport}|${p.away_team}|${p.home_team}`)) p.is_parlay_pick = true;
+      });
+    } else {
+      const todaysPicks = allPicks.filter(p => p.game_date === today);
+      todaysPicks.sort((a, b) => (b.parlay_confidence || 0) - (a.parlay_confidence || 0));
+      todaysPicks.slice(0, 3).forEach(p => { p.is_parlay_pick = true; });
+    }
 
     if (allPicks.length === 0) {
       await sendAlert('fetch-picks returned zero games', 'Check Odds API quota/keys.');
@@ -348,7 +370,8 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: 'Insert failed', detail: error.message });
     }
 
-    res.status(200).json({ inserted: allPicks.length, parlayPicks: todaysPicks.slice(0, 3).length });
+    const parlayPickCount = allPicks.filter(p => p.is_parlay_pick).length;
+    res.status(200).json({ inserted: allPicks.length, parlayPicks: parlayPickCount });
   } catch (err) {
     console.error(err);
     await sendAlert('fetch-picks cron failed', err.message || String(err));
