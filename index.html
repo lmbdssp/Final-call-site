@@ -422,17 +422,19 @@ async function loadGamesForSport(sport){
     return;
   }
 
-  // College football runs 80+ games a day — showing every one buries the
-  // useful picks. Keep the five strongest by consensus, then put them back
-  // in kickoff order for display.
+  // High-volume sports bury the useful picks — college football runs 80+ games
+  // on a Saturday and soccer spans several competitions daily. Cap those, show
+  // everything for the rest. Tune the numbers here; no other changes needed.
+  const MAX_GAMES_PER_SPORT = { NCAAF: 5, Soccer: 8 };
+  const cap = MAX_GAMES_PER_SPORT[sport];
   let rows = data;
   let trimmedNote = '';
-  if (sport === 'NCAAF' && data.length > 5) {
+  if (cap && data.length > cap) {
     rows = [...data]
       .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
-      .slice(0, 5)
+      .slice(0, cap)
       .sort((a, b) => new Date(a.commence_time) - new Date(b.commence_time));
-    trimmedNote = `<div class="games-empty" style="text-align:left; padding:0 0 4px;">Showing our 5 strongest calls from ${data.length} college games today.</div>`;
+    trimmedNote = `<div class="games-empty" style="text-align:left; padding:0 0 4px;">Showing our ${cap} strongest calls from ${data.length} games today.</div>`;
   }
 
   list.innerHTML = trimmedNote + rows.map((g, i)=>{
