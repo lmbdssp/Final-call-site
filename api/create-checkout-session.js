@@ -16,8 +16,8 @@ export default async function handler(req, res) {
     return res.status(429).json({ error: 'Too many requests — please try again in a minute.' });
   }
 
-  const priceId = plan === 'annual'
-    ? process.env.STRIPE_PRICE_ANNUAL
+  const priceId = plan === 'weekly'
+    ? process.env.STRIPE_PRICE_WEEKLY
     : process.env.STRIPE_PRICE_MONTHLY;
 
   try {
