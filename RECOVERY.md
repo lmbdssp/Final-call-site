@@ -141,6 +141,13 @@ If you ever change this filter, understand you are changing a public accuracy cl
 **Sample sizes are uneven.** As of this writing MLB has ~62 graded bettable picks;
 NCAAF has 8, NFL 3. Per-sport percentages outside MLB are not yet meaningful.
 
+**Win rate and ROI are not the same thing, and can move in opposite directions.**
+A 65% hit rate on -300 favorites loses money; a 55% hit rate on +110 underdogs makes
+money. `results-stats.html` publishes both for exactly this reason. Current figures:
+~65% win rate, **+6% ROI** over ~110 bettable picks — positive, but a small sample.
+Any future change that chases a higher win rate will tend to push ROI down, because
+it drifts the selection toward heavier favorites. Do not optimize for win rate alone.
+
 **Games with no Moneyline still appear.** A game is skipped only if it has no h2h *and*
 no spread *and* no total. This exists so lopsided mismatches (e.g. FBS vs FCS), where
 books often post no moneyline, don't silently vanish from the site.
@@ -174,7 +181,7 @@ results archive matters.
 2. Re-add every variable in §2.
 3. Point the `finalcallpro.com` domain at the new project (Namecheap DNS).
 4. Update the Stripe webhook destination URL if the domain changed.
-5. Verify all three crons appear under Settings → Cron Jobs.
+5. Verify all four crons appear under Settings → Cron Jobs.
 
 ---
 
