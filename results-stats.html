@@ -94,9 +94,9 @@
           <span><strong class="${overallRoi > 0 ? 'win' : overallRoi < 0 ? 'loss' : ''}">${overallRoi != null ? (overallRoi > 0 ? '+' : '') + overallRoi + '% ROI' : ''}</strong></span>
         `;
 
-        // ---- ROI chart: most recent 14 days, oldest to newest ----
+        // ---- ROI chart: most recent 7 days, oldest to newest ----
         const chart = document.getElementById('roiChart');
-        const chartDays = roiDays.slice(0, 14).reverse();
+        const chartDays = roiDays.slice(0, 7).reverse();
 
         if (chartDays.length === 0) {
           chart.innerHTML = '<div class="note">No graded results yet.</div>';
