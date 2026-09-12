@@ -453,7 +453,7 @@ async function loadGamesForSport(sport){
 /* ---------------- public results calendar (free for everyone) ---------------- */
 const yesterdayStr = easternDateStr(new Date(Date.now() - 86400000));
 document.getElementById('resultsDate').value = yesterdayStr;
-document.getElementById('resultsDate').max = todayStr;
+document.getElementById('resultsDate').max = yesterdayStr;
 document.getElementById('loadResultsBtn').addEventListener('click', ()=>loadResultsForDate(document.getElementById('resultsDate').value));
 
 
