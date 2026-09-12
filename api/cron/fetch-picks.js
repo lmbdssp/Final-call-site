@@ -245,6 +245,13 @@ async function fetchSportOdds(sportLabel, sportKey) {
     // heavier favorite (max -500) as a safe anchor leg.
     const MAX_STRAIGHT_ODDS = -200;
     const MAX_PARLAY_ODDS = -500;
+    // A moneyline favorite has to clear a much higher bar to be worth taking:
+    // -180 needs a 64% hit rate just to break even, while a -110 spread needs
+    // 52.4%. So when a Spread or Total is within a few points of the Moneyline's
+    // confidence, prefer it — same opinion, better price. Applied to the straight
+    // card only; the parlay still picks on raw confidence, since there the goal
+    // is genuinely maximizing the odds all three legs land.
+    const ML_PRICE_PENALTY = 5;
     const candidates = [
       { type: 'Moneyline', confidence: mlConfidence, summary: mlPickStr, odds: mlOdds, team: mlTeam, point: null, direction: null, value: mlValue, book: mlBook, books: mlBooks },
       { type: 'Spread', confidence: spreadConfidence, summary: spreadPickStr, odds: spreadOdds, team: spreadTeam, point: spreadPoint, direction: null, value: spreadValue, book: spreadBook, books: spreadBooks },
@@ -253,8 +260,9 @@ async function fetchSportOdds(sportLabel, sportKey) {
     if (candidates.length === 0) continue; // no usable market at all — nothing to show for this game
 
     const straightCandidates = candidates.filter(c => c.odds == null || c.odds > MAX_STRAIGHT_ODDS);
+    const selectionScore = c => c.confidence - (c.type === 'Moneyline' ? ML_PRICE_PENALTY : 0);
     const best = (straightCandidates.length ? straightCandidates : candidates)
-      .reduce((a, b) => (b.confidence > a.confidence ? b : a));
+      .reduce((a, b) => (selectionScore(b) > selectionScore(a) ? b : a));
 
     const parlayCandidates = candidates.filter(c => c.odds == null || c.odds > MAX_PARLAY_ODDS);
     const parlayBest = (parlayCandidates.length ? parlayCandidates : candidates)
