@@ -16,8 +16,8 @@ function readRawBody(req) {
 }
 
 function planFromPriceId(priceId) {
+  if (priceId === process.env.STRIPE_PRICE_WEEKLY) return 'weekly';
   if (priceId === process.env.STRIPE_PRICE_MONTHLY) return 'monthly';
-  if (priceId === process.env.STRIPE_PRICE_ANNUAL) return 'annual';
   return null;
 }
 
