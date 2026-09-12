@@ -46,7 +46,6 @@ const COMPETITION_LABELS = {
 // market per game instead of pulling every available prop type.
 const PROP_MARKETS = {
   NFL: { market: 'player_anytime_td', label: 'Anytime TD' },
-  NCAAF: { market: 'player_anytime_td', label: 'Anytime TD' },
   NBA: { market: 'player_points', label: 'Points' },
   NCAAB: { market: 'player_points', label: 'Points' },
   NHL: { market: 'player_goal_scorer_anytime', label: 'Anytime Goal' },
