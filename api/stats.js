@@ -28,12 +28,24 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: parlayError.message });
   }
 
+  // Flat 1-unit stake per pick. Win rate alone doesn't show whether picks
+  // are profitable — a high hit rate on heavy favorites can still lose money.
+  function unitProfit(row) {
+    if (row.odds == null) return 0;
+    if (!row.correct) return -1;
+    return row.odds > 0 ? row.odds / 100 : 100 / -row.odds;
+  }
+
   const byDate = {};
   for (const row of rows) {
     const date = row.game_date;
-    if (!byDate[date]) byDate[date] = { hits: 0, misses: 0 };
+    if (!byDate[date]) byDate[date] = { hits: 0, misses: 0, profit: 0, staked: 0 };
     if (row.correct) byDate[date].hits++;
     else byDate[date].misses++;
+    if (row.odds != null) {
+      byDate[date].profit += unitProfit(row);
+      byDate[date].staked += 1;
+    }
   }
 
   const parlayByDate = {};
@@ -55,7 +67,7 @@ export default async function handler(req, res) {
   const allDates = new Set([...Object.keys(byDate), ...Object.keys(parlayByDate)]);
 
   const summary = Array.from(allDates).sort((a, b) => b.localeCompare(a)).map((date) => {
-    const counts = byDate[date] || { hits: 0, misses: 0 };
+    const counts = byDate[date] || { hits: 0, misses: 0, profit: 0, staked: 0 };
     const total = counts.hits + counts.misses;
     return {
       date,
@@ -63,6 +75,7 @@ export default async function handler(req, res) {
       misses: counts.misses,
       total,
       winRate: total > 0 ? ((counts.hits / total) * 100).toFixed(1) : null,
+      roi: counts.staked > 0 ? ((counts.profit / counts.staked) * 100).toFixed(1) : null,
       parlayResult: parlayResultForDate(date),
     };
   });
