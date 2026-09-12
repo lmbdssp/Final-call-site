@@ -57,12 +57,20 @@
         const totalGames = totalHits + totalMisses;
         const overallRate = totalGames > 0 ? ((totalHits / totalGames) * 100).toFixed(1) : '0.0';
 
+        // Weight each day by how many picks it had, so a 2-pick day doesn't
+        // swing the all-time figure as much as a 20-pick day.
+        const roiDays = data.filter(r => r.roi != null && r.total > 0);
+        const roiWeighted = roiDays.reduce((sum, r) => sum + (Number(r.roi) * r.total), 0);
+        const roiGames = roiDays.reduce((sum, r) => sum + r.total, 0);
+        const overallRoi = roiGames > 0 ? (roiWeighted / roiGames).toFixed(1) : null;
+
         document.getElementById('allTime').innerHTML = `
           <span><strong style="color:#f5c518">ALL-TIME:</strong></span>
           <span class="win">${totalHits} hits</span>
           <span class="loss">${totalMisses} misses</span>
           <span>${totalGames} total</span>
           <span><strong>${overallRate}% win rate${overallRate >= 70 ? ' 🔥' : overallRate >= 50 ? ' 👍' : ' 😢'}</strong></span>
+          <span><strong class="${overallRoi > 0 ? 'win' : overallRoi < 0 ? 'loss' : ''}">${overallRoi != null ? (overallRoi > 0 ? '+' : '') + overallRoi + '% ROI' : ''}</strong></span>
 
         `;
       })
