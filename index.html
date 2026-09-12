@@ -422,7 +422,20 @@ async function loadGamesForSport(sport){
     return;
   }
 
-  list.innerHTML = data.map((g, i)=>{
+  // College football runs 80+ games a day — showing every one buries the
+  // useful picks. Keep the five strongest by consensus, then put them back
+  // in kickoff order for display.
+  let rows = data;
+  let trimmedNote = '';
+  if (sport === 'NCAAF' && data.length > 5) {
+    rows = [...data]
+      .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+      .slice(0, 5)
+      .sort((a, b) => new Date(a.commence_time) - new Date(b.commence_time));
+    trimmedNote = `<div class="games-empty" style="text-align:left; padding:0 0 4px;">Showing our 5 strongest calls from ${data.length} college games today.</div>`;
+  }
+
+  list.innerHTML = trimmedNote + rows.map((g, i)=>{
     const timeStr = g.commence_time ? new Date(g.commence_time).toLocaleTimeString([], {hour:'numeric', minute:'2-digit', timeZoneName:'short'}) : '';
     const pickLocked = !isSubscribed && i > 0;
     const markets = marketBox('Moneyline', g.ml_pick, g.ml_odds, g.best_pick_type === 'Moneyline', g.confidence, pickLocked)
@@ -446,6 +459,7 @@ async function loadGamesForSport(sport){
       ${propSection}
     </div>`;
   }).join('');
+  void rows;
 
   list.querySelectorAll('.prop-unlock-link').forEach(a=>a.addEventListener('click', (e)=>{ e.preventDefault(); openModal(); }));
 }
