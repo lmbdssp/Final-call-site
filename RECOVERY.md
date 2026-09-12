@@ -34,8 +34,8 @@ one of these must be regenerated.
 |---|---|
 | `STRIPE_SECRET_KEY` | Stripe → Developers → API keys → Create secret key ("Powering an integration you built") |
 | `STRIPE_WEBHOOK_SECRET` | Stripe → Developers → Webhooks → the `finalcallpro.com/api/webhooks/stripe` destination → Signing secret → copy icon |
-| `STRIPE_PRICE_MONTHLY` | Stripe → Product catalog → Final Call Pro → $14.99/mo price → copy ID |
-| `STRIPE_PRICE_ANNUAL` | Stripe → Product catalog → Final Call Pro → $124.99/yr price → copy ID |
+| `STRIPE_PRICE_WEEKLY` | Stripe → Product catalog → Final Call Pro → $14.99/wk price → copy ID |
+| `STRIPE_PRICE_MONTHLY` | Stripe → Product catalog → Final Call Pro → $59.99/mo price → copy ID |
 | `SUPABASE_URL` | Supabase → Project Settings → API |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase → Project Settings → API (**full DB access — treat as root**) |
 | `ODDS_API_KEY` | the-odds-api.com account dashboard |
@@ -128,7 +128,7 @@ which is why the weekly export in §7 exists.
 ### Rebuild `subscriptions` from Stripe
 Stripe is authoritative. For each active subscription, write a row with:
 `user_email` (customer email), `stripe_customer_id`, `stripe_subscription_id`,
-`status`, `plan` (monthly/annual by price ID), `current_period_end`
+`status`, `plan` (weekly/monthly by price ID), `current_period_end`
 (from `subscription.items.data[0].current_period_end`).
 Then re-add the owner comp row from §4.
 
