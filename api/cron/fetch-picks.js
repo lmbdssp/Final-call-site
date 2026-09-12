@@ -270,8 +270,13 @@ async function fetchSportOdds(sportLabel, sportKey) {
       }
     }
 
-    // Extra API call per game — this is the cost tradeoff for real player props.
-    const propPick = await getBestProp(sportKey, game.id, sportLabel);
+    // One API call per game, so only spend it where props actually exist:
+    // books don't post player props days or weeks out, and the feed returns
+    // the entire upcoming schedule (hundreds of games).
+    const hoursUntilStart = (new Date(game.commence_time) - new Date()) / 3600000;
+    const propPick = hoursUntilStart <= 48
+      ? await getBestProp(sportKey, game.id, sportLabel)
+      : null;
 
     picks.push({
       game_date: new Date(new Date(game.commence_time).toLocaleString('en-US', { timeZone: 'America/New_York' })).toISOString().slice(0, 10),
