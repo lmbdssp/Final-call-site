@@ -106,10 +106,32 @@ since there is no Stripe customer behind it.
 
 ## 5. Business logic worth knowing before you change it
 
+**How a pick is chosen.** For each of the three markets (Moneyline, Spread, Total):
+1. Collect the line from *every* bookmaker that posted it, not just the first.
+2. De-vig each book — raw implied probabilities on a two-way market sum to more than
+   100% (a -110/-110 spread sums to ~104.8%); normalizing to 1 gives the book's real
+   opinion. Without this, every confidence number is inflated by the house margin.
+3. Books hang different numbers (-3 vs -3.5), so only books on the **most common line**
+   are averaged — mixing them would be meaningless.
+4. Average the de-vigged probabilities into a consensus, and take the favored side.
+5. Scan all books for the **best price** on that side; that price is what's displayed,
+   and the gap between it and consensus is stored as `value_edge`.
+
+Then whichever of the three markets has the highest confidence wins the card.
+This follows market consensus rather than hunting mispricings — a defensible approach,
+since sportsbook lines are set by professionals, but it is not an independent model.
+There is no machine learning, no historical simulation, no injury or weather data.
+
 **Odds caps.** Straight game cards never feature a pick worse than **-200**; the parlay
 bundle allows up to **-500**. When a Moneyline is too lopsided it is dropped and the
 Spread or Total (whichever has higher confidence) is featured instead. Set in
 `api/cron/fetch-picks.js` as `MAX_STRAIGHT_ODDS` / `MAX_PARLAY_ODDS`.
+
+**API cost control.** The odds feed returns the *entire* upcoming schedule (hundreds of
+games — the whole NFL season, not just today). `getBestProp()` costs one API call per
+game, so it only runs for games starting within **48 hours**; books don't post player
+props weeks out, so those calls returned nothing and burned quota. NCAAF props are
+disabled entirely (highest game volume, unreliable data).
 
 **Published stats are filtered.** `api/stats.js` excludes graded picks worse than -200.
 This matters: unfiltered, the record reads ~91% because early NCAAF picks were moneylines
