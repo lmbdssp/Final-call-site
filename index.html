@@ -412,7 +412,7 @@ async function loadGamesForSport(sport){
   list.innerHTML = '<div class="games-empty">Loading today\'s games…</div>';
   const { data, error } = await sb
     .from('daily_picks')
-    .select('sport,league,away_team,home_team,commence_time,ml_pick,ml_odds,spread_pick,spread_odds,total_pick,total_odds,best_pick_type,prop_pick,confidence')
+    .select('sport,league,away_team,home_team,commence_time,ml_pick,ml_odds,spread_pick,spread_odds,total_pick,total_odds,best_pick_type,prop_pick,confidence,value_edge')
     .eq('game_date', todayStr)
     .eq('sport', sport)
     .order('commence_time', { ascending: true });
@@ -430,11 +430,17 @@ async function loadGamesForSport(sport){
   let rows = data;
   let trimmedNote = '';
   if (cap && data.length > cap) {
+    // Rank by value edge — how far the best available price beats the
+    // de-vigged consensus — rather than by raw confidence. Confidence just
+    // surfaces the biggest favorites, which is where our returns are weakest.
+    // Falls back to confidence on older rows written before edge was tracked.
+    const anyEdge = data.some(g => g.value_edge != null);
+    const rank = g => anyEdge ? (g.value_edge ?? -999) : (g.confidence || 0);
     rows = [...data]
-      .sort((a, b) => (b.confidence || 0) - (a.confidence || 0))
+      .sort((a, b) => rank(b) - rank(a))
       .slice(0, cap)
       .sort((a, b) => new Date(a.commence_time) - new Date(b.commence_time));
-    trimmedNote = `<div class="games-empty" style="text-align:left; padding:0 0 4px;">Showing our ${cap} strongest calls from ${data.length} games today.</div>`;
+    trimmedNote = `<div class="games-empty" style="text-align:left; padding:0 0 4px;">Showing our ${cap} best-value calls from ${data.length} games today.</div>`;
   }
 
   list.innerHTML = trimmedNote + rows.map((g, i)=>{
