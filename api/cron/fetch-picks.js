@@ -171,6 +171,15 @@ function buildSide(c, favorA, nameA, nameB) {
   };
 }
 
+// Take whichever side is better priced relative to consensus — this can be
+// the underdog. Previously this always took the favored side, which is why
+// the site almost never showed a plus-money pick.
+function bestValueSide(c, nameA, nameB) {
+  const sideA = buildSide(c, true, nameA, nameB);
+  const sideB = buildSide(c, false, nameA, nameB);
+  return sideA.value >= sideB.value ? sideA : sideB;
+}
+
 async function fetchSportOdds(sportLabel, sportKey) {
   const regions = sportLabel === 'Soccer' ? 'us,uk' : 'us';
   const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=${regions}&markets=h2h,spreads,totals&oddsFormat=american`;
@@ -204,7 +213,7 @@ async function fetchSportOdds(sportLabel, sportKey) {
     if (h2hEntries.length) {
       const c = consensusTwoWay(h2hEntries, o => o.name === game.home_team, o => o.name === game.away_team);
       if (c) {
-        const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team);
+        const s = bestValueSide(c, game.home_team, game.away_team);
         mlTeam = s.name; mlOdds = s.price; mlConfidence = s.confidence;
         mlValue = s.value; mlBook = s.book; mlBooks = s.books;
         mlPickStr = `${mlTeam} ML`;
@@ -218,7 +227,7 @@ async function fetchSportOdds(sportLabel, sportKey) {
       const entries = filterToModalPoint(spreadEntriesAll, game.home_team);
       const c = entries.length ? consensusTwoWay(entries, o => o.name === game.home_team, o => o.name === game.away_team) : null;
       if (c) {
-        const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team);
+        const s = bestValueSide(c, game.home_team, game.away_team);
         spreadTeam = s.name; spreadOdds = s.price; spreadPoint = s.point;
         spreadConfidence = s.confidence; spreadValue = s.value; spreadBook = s.book; spreadBooks = s.books;
         spreadPickStr = `${spreadTeam} ${spreadPoint > 0 ? '+' : ''}${spreadPoint}`;
@@ -232,7 +241,7 @@ async function fetchSportOdds(sportLabel, sportKey) {
       const entries = filterToModalPoint(totalEntriesAll, 'Over');
       const c = entries.length ? consensusTwoWay(entries, o => o.name === 'Over', o => o.name === 'Under') : null;
       if (c) {
-        const s = buildSide(c, c.probA >= c.probB, 'Over', 'Under');
+        const s = bestValueSide(c, 'Over', 'Under');
         totalDirection = s.name; totalOdds = s.price; totalPoint = s.point;
         totalConfidence = s.confidence; totalValue = s.value; totalBook = s.book; totalBooks = s.books;
         totalPickStr = `${totalDirection} ${totalPoint}`;
@@ -260,7 +269,14 @@ async function fetchSportOdds(sportLabel, sportKey) {
     if (candidates.length === 0) continue; // no usable market at all — nothing to show for this game
 
     const straightCandidates = candidates.filter(c => c.odds == null || c.odds > MAX_STRAIGHT_ODDS);
-    const selectionScore = c => c.confidence - (c.type === 'Moneyline' ? ML_PRICE_PENALTY : 0);
+    // Confidence alone always favors favorites (higher win probability by
+    // definition). Adding value edge as a same-scale bonus lets a genuinely
+    // mispriced underdog compete instead of being buried automatically —
+    // typical edges run 1-5 points, so this nudges close calls rather than
+    // overriding confidence outright.
+    const EDGE_WEIGHT = 100;
+    const selectionScore = c => c.confidence + (c.value != null ? c.value * EDGE_WEIGHT : 0)
+      - (c.type === 'Moneyline' ? ML_PRICE_PENALTY : 0);
     const best = (straightCandidates.length ? straightCandidates : candidates)
       .reduce((a, b) => (selectionScore(b) > selectionScore(a) ? b : a));
 
