@@ -143,6 +143,14 @@
   .hiw-step .hiw-text{font-size:12.5px; color:var(--line-dim); line-height:1.5;}
   .hiw-step .hiw-text b{color:var(--line-white);}
   .gm-edge{font-size:9.5px; color:var(--lime); margin-top:3px; line-height:1.3;}
+  .market-status{max-width:640px; margin:0 auto 16px; display:flex; justify-content:center; gap:14px; font-family:'Space Mono',monospace; font-size:10.5px; color:var(--line-dim); flex-wrap:wrap;}
+  .market-status .dot{color:var(--lime);}
+  .signin-bar{max-width:640px; margin:0 auto 20px; background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:16px 18px;}
+  .signin-bar h4{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:14px; margin:0 0 4px;}
+  .signin-bar p{font-size:12px; color:var(--line-dim); margin:0 0 12px;}
+  .signin-bar .signin-row{display:flex; gap:8px; flex-wrap:wrap;}
+  .signin-bar input{flex:1; min-width:180px; background:var(--bg-deep); border:1px solid var(--bg-panel-2); color:var(--line-white); font-family:'Inter',sans-serif; font-size:14px; padding:10px 12px; border-radius:var(--radius); outline:none;}
+  .signin-bar button{font-family:'Oswald',sans-serif; font-weight:600; font-size:13px; text-transform:uppercase; background:var(--pink); color:var(--bg-deep); border:none; padding:0 16px; border-radius:var(--radius); cursor:pointer; white-space:nowrap;}
   .site-footer{max-width:520px; margin:32px auto 24px; padding:16px 20px 0; border-top:1px solid var(--bg-panel-2); font-size:10.5px; color:var(--line-dim); line-height:1.6; text-align:center;}
 
   /* ---- Sport ball icons ---- */
@@ -187,27 +195,15 @@ align-items:center; margin-bottom:16px; flex-wrap:wrap;}
 <body>
 <div class="wrap">
 
-  <!-- AUTH SCREEN (Supabase magic-link email) -->
-  <div id="authScreen">
-    <div class="masthead"><h1><svg class="logo-mark" width="28" height="28" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#FFD400" stroke-width="2.5"/><circle cx="16" cy="16" r="3" fill="#FFD400"/><line x1="16" y1="2" x2="16" y2="8" stroke="#FFD400" stroke-width="2.5"/><line x1="16" y1="24" x2="16" y2="30" stroke="#FFD400" stroke-width="2.5"/><line x1="2" y1="16" x2="8" y2="16" stroke="#FFD400" stroke-width="2.5"/><line x1="24" y1="16" x2="30" y2="16" stroke="#FFD400" stroke-width="2.5"/></svg>Final <span>Call</span></h1><span class="subtitle">SCORE PREDICTOR</span></div>
-    <div class="auth-card">
-      <h2>Sign in</h2>
-      <p>Enter your email — we'll send a one-time link, no password needed.</p>
-      <div class="field"><label>Email</label><input type="email" id="authEmail" autocomplete="email"></div>
-      <button class="btn-primary" id="authSubmit">Send sign-in link</button>
-      <div class="auth-error" id="authError"></div>
-      <div class="auth-status" id="authStatus"></div>
-      <div class="auth-note">Real accounts via Supabase Auth — no passwords stored by this app. Check your inbox after requesting the link.</div>
-    </div>
-  </div>
-
-  <!-- MAIN APP -->
-  <div id="appScreen" class="hidden">
+  <!-- MAIN APP — visible to everyone, signed in or not. Only Pro content
+       behind sign-in/subscription is gated (see pickLocked below). -->
+  <div id="appScreen">
     <div class="masthead">
       <h1><svg class="logo-mark" width="28" height="28" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#FFD400" stroke-width="2.5"/><circle cx="16" cy="16" r="3" fill="#FFD400"/><line x1="16" y1="2" x2="16" y2="8" stroke="#FFD400" stroke-width="2.5"/><line x1="16" y1="24" x2="16" y2="30" stroke="#FFD400" stroke-width="2.5"/><line x1="2" y1="16" x2="8" y2="16" stroke="#FFD400" stroke-width="2.5"/><line x1="24" y1="16" x2="30" y2="16" stroke="#FFD400" stroke-width="2.5"/></svg>Final <span>Call</span></h1>
-      <div class="userbox"><span id="userEmailLabel"></span><br><a id="manageSubLink" class="hidden">Manage subscription</a><a id="logoutLink"> · Log out</a></div>
+      <div class="userbox hidden" id="userBox"><span id="userEmailLabel"></span><br><a id="manageSubLink" class="hidden">Manage subscription</a><a id="logoutLink"> · Log out</a></div>
     </div>
     <div class="tagline">One signal. One decision. &nbsp;·&nbsp; <a href="/results-stats.html">See our full track record →</a></div>
+    <div class="market-status" id="marketStatus"></div>
 
     <div class="track-record" id="trackRecordBox">
       <div class="tr-title">The Final Call Track Record</div>
@@ -237,11 +233,23 @@ align-items:center; margin-bottom:16px; flex-wrap:wrap;}
       </div>
     </div>
 
+    <div class="signin-bar hidden" id="signinBar">
+      <h4>Sign in</h4>
+      <p>Save your free picks and unlock Pro — no password needed, just a one-time email link.</p>
+      <div class="signin-row">
+        <input type="email" id="authEmail" autocomplete="email" placeholder="you@email.com">
+        <button id="authSubmit">Send sign-in link</button>
+      </div>
+      <div class="auth-error" id="authError"></div>
+      <div class="auth-status" id="authStatus"></div>
+    </div>
+
     <div class="sport-row" id="sportRow"></div>
 
     <div class="games-list" id="gamesList">
       <div class="games-empty">Loading today's games…</div>
     </div>
+    <div class="hidden" id="signinNudge" style="text-align:center; margin:-14px 0 20px;"><a href="#" id="signinNudgeLink" style="font-size:12px; color:var(--cyan);">Sign in to see every game's Final Call →</a></div>
 
     <div class="footnote">Final Call projections are generated from real sportsbook lines each morning — moneyline, spread, and total are shown for every game, with our Final Call called out. Player props are included for NFL, NBA, NHL, and NCAAB when books post them; soccer, MLB, and college football don't carry reliable prop data, so those games show picks only. This is not betting advice — the market can move, and no projection is a guarantee.</div>
 
