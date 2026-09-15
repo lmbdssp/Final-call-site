@@ -636,27 +636,36 @@ document.getElementById('parlayUnlockBtn').addEventListener('click', ()=>{
 /* ---------------- track record (real data from /api/stats) ---------------- */
 async function loadTrackRecord(){
   const box = document.getElementById('trackRecordBox');
+  const title = '<div class="tr-title">The Final Call Track Record</div>';
   try {
     const res = await fetch('/api/stats');
+    if (!res.ok) throw new Error(`stats endpoint returned ${res.status}`);
     const data = await res.json();
+    if (!Array.isArray(data)) throw new Error('unexpected stats response');
+
     const totalHits = data.reduce((s,r)=>s+r.hits,0);
     const totalMisses = data.reduce((s,r)=>s+r.misses,0);
     const totalGames = totalHits+totalMisses;
-    const overallRate = totalGames>0 ? ((totalHits/totalGames)*100).toFixed(1) : null;
+
+    if (totalGames === 0) {
+      box.innerHTML = title + '<div class="tr-row"><span>Track record will appear here once completed Final Calls are graded.</span></div>';
+      return;
+    }
+
+    const overallRate = ((totalHits/totalGames)*100).toFixed(1);
     const roiDays = data.filter(r=>r.roi!=null && r.total>0);
     const roiWeighted = roiDays.reduce((s,r)=>s+(Number(r.roi)*r.total),0);
     const roiGames = roiDays.reduce((s,r)=>s+r.total,0);
     const overallRoi = roiGames>0 ? (roiWeighted/roiGames).toFixed(1) : null;
     const todayRow = data.find(r=>r.date===todayStr);
-    box.innerHTML = `
-      <div class="tr-title">The Final Call Track Record</div>
+    box.innerHTML = title + `
       <div class="tr-row"><span>Today</span><span>${todayRow ? `${todayRow.hits}-${todayRow.misses}` : 'No graded picks yet'}</span></div>
-      <div class="tr-row"><span>All-Time</span><span>${totalGames} picks${overallRate!=null ? ` · ${overallRate}% win rate` : ''}${overallRoi!=null ? ` · ${overallRoi>0?'+':''}${overallRoi}% ROI` : ''}</span></div>
+      <div class="tr-row"><span>All-Time</span><span>${totalGames} picks · ${overallRate}% win rate${overallRoi!=null ? ` · ${overallRoi>0?'+':''}${overallRoi}% ROI` : ''}</span></div>
       <div class="tr-trust">All picks are timestamped before game start. Results are recorded automatically. No picks are removed or edited after publication.</div>
       <a class="tr-link" href="/results-stats.html">View every pick →</a>
     `;
   } catch (e) {
-    box.innerHTML = '<div class="tr-title">The Final Call Track Record</div><div class="tr-row"><span>Unavailable right now — <a class="tr-link" href="/results-stats.html">view full stats</a></span></div>';
+    box.innerHTML = title + '<div class="tr-row"><span>Track record temporarily unavailable — <a class="tr-link" href="/results-stats.html">view full stats</a></span></div>';
   }
 }
 loadTrackRecord();
@@ -664,10 +673,15 @@ loadTrackRecord();
 /* ---------------- market status (real data from fetch_log) ---------------- */
 async function loadMarketStatus(){
   const el = document.getElementById('marketStatus');
-  const { data } = await sb.from('fetch_log').select('ran_at,games_processed,books_max').order('ran_at', { ascending: false }).limit(1).maybeSingle();
-  if(!data){ el.innerHTML = ''; return; }
-  const time = new Date(data.ran_at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit', timeZoneName:'short'});
-  el.innerHTML = `<span><span class="dot">●</span> Data updated ${time}</span><span>${data.games_processed} games analyzed</span>${data.books_max ? `<span>Up to ${data.books_max} sportsbooks per game</span>` : ''}`;
+  try {
+    const { data, error } = await sb.from('fetch_log').select('ran_at,games_processed,books_max').order('ran_at', { ascending: false }).limit(1).maybeSingle();
+    if (error) throw error;
+    if(!data){ el.innerHTML = ''; return; }
+    const time = new Date(data.ran_at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit', timeZoneName:'short'});
+    el.innerHTML = `<span><span class="dot">●</span> Data updated ${time}</span><span>${data.games_processed} games analyzed</span>${data.books_max ? `<span>Up to ${data.books_max} sportsbooks per game</span>` : ''}`;
+  } catch (e) {
+    el.innerHTML = '';
+  }
 }
 loadMarketStatus();
 
