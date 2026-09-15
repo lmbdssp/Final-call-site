@@ -338,6 +338,7 @@ async function fetchSportOdds(sportLabel, sportKey) {
       parlay_odds: parlayBest.odds,
       parlay_confidence: parlayBest.confidence,
       is_parlay_pick: false,
+      updated_at: new Date().toISOString(),
     });
   }
   return picks;

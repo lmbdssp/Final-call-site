@@ -73,28 +73,40 @@ export default async function handler(req, res) {
 
           if (!rows || rows.length === 0) continue;
 
+          const isDraw = actualHome === actualAway;
           const homeWon = actualHome > actualAway;
           const actualTotal = actualHome + actualAway;
           const homeMargin = actualHome - actualAway; // positive if home won, negative if away won
 
+          // Returns { correct, push }. A push means the bet is void — it
+          // should count toward neither wins nor losses, and the stake is
+          // returned (not lost) for ROI purposes.
           function gradePick(type, team, point, direction) {
             if (type === 'Total') {
-              return direction === 'Over' ? actualTotal > point : actualTotal < point;
+              if (actualTotal === Number(point)) return { correct: false, push: true };
+              const hit = direction === 'Over' ? actualTotal > point : actualTotal < point;
+              return { correct: hit, push: false };
             } else if (type === 'Spread') {
               const teamMargin = team === game.home_team ? homeMargin : -homeMargin;
-              return teamMargin + Number(point) > 0;
+              const margin = teamMargin + Number(point);
+              if (margin === 0) return { correct: false, push: true };
+              return { correct: margin > 0, push: false };
             } else {
-              // Moneyline (or any legacy row without a type — treat as moneyline)
+              // Moneyline. Standard sportsbook settlement: a draw loses a
+              // home/away moneyline bet — it is not a push — only a bet on
+              // the draw itself would win. actualHome > actualAway alone
+              // can't tell "away won" apart from "draw", so check isDraw first.
+              if (isDraw) return { correct: false, push: false };
               const pickedHome = team === game.home_team;
-              return pickedHome ? homeWon : !homeWon;
+              return { correct: pickedHome ? homeWon : !homeWon, push: false };
             }
           }
 
           for (const row of rows) {
-            const correct = gradePick(row.best_pick_type, row.best_pick_team, row.best_pick_point, row.best_pick_direction);
+            const straight = gradePick(row.best_pick_type, row.best_pick_team, row.best_pick_point, row.best_pick_direction);
             // Parlay legs can differ from the straight pick (parlay allows
             // heavier favorites, up to -500 vs -200), so grade separately.
-            const parlay_correct = row.parlay_pick_type
+            const parlay = row.parlay_pick_type
               ? gradePick(row.parlay_pick_type, row.parlay_pick_team, row.parlay_pick_point, row.parlay_pick_direction)
               : null;
 
@@ -102,8 +114,11 @@ export default async function handler(req, res) {
               actual_home_score: actualHome,
               actual_away_score: actualAway,
               graded: true,
-              correct,
-              parlay_correct,
+              correct: straight.correct,
+              push: straight.push,
+              parlay_correct: parlay ? parlay.correct : null,
+              parlay_push: parlay ? parlay.push : false,
+              updated_at: new Date().toISOString(),
             }).eq('id', row.id);
 
             gradedCount++;

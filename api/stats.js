@@ -9,8 +9,9 @@ export default async function handler(req, res) {
   const MAX_STRAIGHT_ODDS = -200;
   const { data: rows, error } = await supabase
     .from('daily_picks')
-    .select('game_date, correct, odds')
+    .select('game_date, correct, odds, push')
     .eq('graded', true)
+    .eq('push', false)
     .or(`odds.is.null,odds.gt.${MAX_STRAIGHT_ODDS}`)
     .order('game_date', { ascending: false });
 
@@ -20,7 +21,7 @@ export default async function handler(req, res) {
 
   const { data: parlayRows, error: parlayError } = await supabase
     .from('daily_picks')
-    .select('game_date, graded, parlay_correct')
+    .select('game_date, graded, parlay_correct, parlay_push')
     .eq('is_parlay_pick', true)
     .order('game_date', { ascending: false });
 
@@ -60,7 +61,11 @@ export default async function handler(req, res) {
     if (!legs || legs.length === 0) return null;
     const allGraded = legs.every(l => l.graded);
     if (!allGraded) return 'pending';
-    const allHit = legs.every(l => l.parlay_correct === true);
+    // A pushed leg drops out of the parlay (standard settlement); the
+    // remaining legs still need to hit for the bundle to be a win.
+    const activeLegs = legs.filter(l => !l.parlay_push);
+    if (activeLegs.length === 0) return 'pending';
+    const allHit = activeLegs.every(l => l.parlay_correct === true);
     return allHit ? 'hit' : 'loss';
   }
 
