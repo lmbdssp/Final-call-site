@@ -213,7 +213,7 @@ async function fetchSportOdds(sportLabel, sportKey) {
     if (h2hEntries.length) {
       const c = consensusTwoWay(h2hEntries, o => o.name === game.home_team, o => o.name === game.away_team);
       if (c) {
-        const s = bestValueSide(c, game.home_team, game.away_team);
+        const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team);
         mlTeam = s.name; mlOdds = s.price; mlConfidence = s.confidence;
         mlValue = s.value; mlBook = s.book; mlBooks = s.books;
         mlPickStr = `${mlTeam} ML`;
@@ -227,7 +227,7 @@ async function fetchSportOdds(sportLabel, sportKey) {
       const entries = filterToModalPoint(spreadEntriesAll, game.home_team);
       const c = entries.length ? consensusTwoWay(entries, o => o.name === game.home_team, o => o.name === game.away_team) : null;
       if (c) {
-        const s = bestValueSide(c, game.home_team, game.away_team);
+        const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team);
         spreadTeam = s.name; spreadOdds = s.price; spreadPoint = s.point;
         spreadConfidence = s.confidence; spreadValue = s.value; spreadBook = s.book; spreadBooks = s.books;
         spreadPickStr = `${spreadTeam} ${spreadPoint > 0 ? '+' : ''}${spreadPoint}`;
@@ -241,7 +241,7 @@ async function fetchSportOdds(sportLabel, sportKey) {
       const entries = filterToModalPoint(totalEntriesAll, 'Over');
       const c = entries.length ? consensusTwoWay(entries, o => o.name === 'Over', o => o.name === 'Under') : null;
       if (c) {
-        const s = bestValueSide(c, 'Over', 'Under');
+        const s = buildSide(c, c.probA >= c.probB, 'Over', 'Under');
         totalDirection = s.name; totalOdds = s.price; totalPoint = s.point;
         totalConfidence = s.confidence; totalValue = s.value; totalBook = s.book; totalBooks = s.books;
         totalPickStr = `${totalDirection} ${totalPoint}`;
