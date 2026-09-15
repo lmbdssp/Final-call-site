@@ -128,6 +128,21 @@
   .prop-lock-overlay button{font-family:'Oswald',sans-serif; font-size:12px; text-transform:uppercase; letter-spacing:0.4px; background:var(--lime); color:var(--bg-deep); border:none; padding:8px 14px; border-radius:var(--radius); cursor:pointer;}
   .prop-lock-overlay span{font-size:11.5px; color:var(--line-dim);}
   .footnote{font-size:11.5px; color:var(--line-dim); margin-top:18px; line-height:1.6;}
+  .tagline{max-width:640px; margin:0 auto 20px; text-align:center; font-family:'Space Mono',monospace; font-size:12px; color:var(--line-dim); letter-spacing:0.5px;}
+  .tagline a{color:var(--cyan); text-decoration:none;}
+  .track-record{max-width:640px; margin:0 auto 20px; background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:16px 18px;}
+  .track-record .tr-title{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:13px; color:var(--pink); letter-spacing:0.5px; margin-bottom:10px;}
+  .track-record .tr-row{display:flex; justify-content:space-between; font-size:13px; padding:4px 0;}
+  .track-record .tr-row span:first-child{color:var(--line-dim);}
+  .track-record .tr-trust{font-size:11px; color:var(--line-dim); margin-top:10px; padding-top:10px; border-top:1px solid var(--bg-panel-2); line-height:1.5;}
+  .track-record .tr-link{font-size:12px; color:var(--cyan); text-decoration:none; display:inline-block; margin-top:8px;}
+  .how-it-works{max-width:640px; margin:24px auto 0; background:var(--bg-panel); border:1px solid var(--bg-panel-2); border-radius:var(--radius); padding:18px;}
+  .how-it-works .hiw-title{font-family:'Oswald',sans-serif; text-transform:uppercase; font-size:13px; color:var(--pink); letter-spacing:0.5px; margin-bottom:12px;}
+  .hiw-step{display:flex; gap:12px; margin-bottom:12px; align-items:flex-start;}
+  .hiw-step .hiw-num{font-family:'Space Mono',monospace; font-size:14px; color:var(--pink); min-width:26px;}
+  .hiw-step .hiw-text{font-size:12.5px; color:var(--line-dim); line-height:1.5;}
+  .hiw-step .hiw-text b{color:var(--line-white);}
+  .gm-edge{font-size:9.5px; color:var(--lime); margin-top:3px; line-height:1.3;}
   .site-footer{max-width:520px; margin:32px auto 24px; padding:16px 20px 0; border-top:1px solid var(--bg-panel-2); font-size:10.5px; color:var(--line-dim); line-height:1.6; text-align:center;}
 
   /* ---- Sport ball icons ---- */
@@ -192,6 +207,12 @@ align-items:center; margin-bottom:16px; flex-wrap:wrap;}
       <h1><svg class="logo-mark" width="28" height="28" viewBox="0 0 32 32"><circle cx="16" cy="16" r="11" fill="none" stroke="#FFD400" stroke-width="2.5"/><circle cx="16" cy="16" r="3" fill="#FFD400"/><line x1="16" y1="2" x2="16" y2="8" stroke="#FFD400" stroke-width="2.5"/><line x1="16" y1="24" x2="16" y2="30" stroke="#FFD400" stroke-width="2.5"/><line x1="2" y1="16" x2="8" y2="16" stroke="#FFD400" stroke-width="2.5"/><line x1="24" y1="16" x2="30" y2="16" stroke="#FFD400" stroke-width="2.5"/></svg>Final <span>Call</span></h1>
       <div class="userbox"><span id="userEmailLabel"></span><br><a id="manageSubLink" class="hidden">Manage subscription</a><a id="logoutLink"> · Log out</a></div>
     </div>
+    <div class="tagline">One signal. One decision. &nbsp;·&nbsp; <a href="/results-stats.html">See our full track record →</a></div>
+
+    <div class="track-record" id="trackRecordBox">
+      <div class="tr-title">The Final Call Track Record</div>
+      <div class="tr-row"><span>Loading...</span><span></span></div>
+    </div>
 
     <div class="plan-banner" id="planBanner">
       <div class="txt"><b>Free plan</b> — one unlocked Final Call per sport. Go Pro for our pick on every game, the daily Top 3 bundle, and player props where books post them.</div>
@@ -223,6 +244,13 @@ align-items:center; margin-bottom:16px; flex-wrap:wrap;}
     </div>
 
     <div class="footnote">Final Call projections are generated from real sportsbook lines each morning — moneyline, spread, and total are shown for every game, with our Final Call called out. Player props are included for NFL, NBA, NHL, and NCAAB when books post them; soccer, MLB, and college football don't carry reliable prop data, so those games show picks only. This is not betting advice — the market can move, and no projection is a guarantee.</div>
+
+    <div class="how-it-works">
+      <div class="hiw-title">How We Call It</div>
+      <div class="hiw-step"><span class="hiw-num">01</span><span class="hiw-text"><b>We collect</b> live odds from every major sportsbook covering each game — not just one.</span></div>
+      <div class="hiw-step"><span class="hiw-num">02</span><span class="hiw-text"><b>We remove the vig</b> from each book's line and average them into a single consensus probability — the market's real opinion, without the bookmaker's built-in margin.</span></div>
+      <div class="hiw-step"><span class="hiw-num">03</span><span class="hiw-text"><b>We call it</b> — whichever side and market the consensus favors, priced at the best number available across every book we checked.</span></div>
+    </div>
   </div>
 
   <!-- SUBSCRIBE MODAL -->
@@ -234,6 +262,7 @@ align-items:center; margin-bottom:16px; flex-wrap:wrap;}
         <div class="plan-option selected" data-plan="weekly" id="planWeekly"><div class="period">Weekly</div><div class="price">$14.99</div></div>
         <div class="plan-option" data-plan="monthly" id="planMonthly"><div class="period">Monthly</div><div class="price">$59.99</div><div class="save">Save 8%</div></div>
       </div>
+      <div style="font-size:11px; color:var(--line-dim); margin:-4px 0 14px; text-align:center;">Cancel anytime from Manage Subscription — takes effect at the end of your current billing period.</div>
       <label style="display:flex; align-items:flex-start; gap:8px; font-size:12px; color:var(--line-dim); margin:4px 0 14px; cursor:pointer;">
         <input type="checkbox" id="refundAgree" style="margin-top:3px;">
         <span>I understand this subscription <b style="color:var(--line-white);">renews automatically and is non-refundable</b> for the current billing period, per the <a href="/terms.html" target="_blank">Terms of Service</a>.</span>
@@ -396,14 +425,20 @@ function selectSport(key){
   loadGamesForSport(key);
 }
 
-function marketBox(label, pick, odds, isBest, confidence, locked){
+function marketBox(label, pick, odds, isBest, confidence, locked, edge, book){
   const oddsStr = odds == null ? '' : (odds > 0 ? `+${odds}` : `${odds}`);
   const showBest = isBest && !locked;
+  // Only surface edge when it's genuinely positive — this is a real,
+  // computed number (best price vs. de-vigged consensus), not a model score.
+  const edgeLine = showBest && edge != null && edge > 0
+    ? `<div class="gm-edge">+${edge}% value${book ? ` at ${book}` : ''}</div>`
+    : '';
   return `<div class="gc-market${showBest ? ' best' : ''}">
     <div class="gm-label">${label}</div>
     <div class="gm-pick">${pick || '—'}</div>
     ${oddsStr ? `<div class="gm-odds">${oddsStr}</div>` : ''}
     ${showBest ? `<div class="gc-best-badge">Final Call${confidence != null ? ` • ${confidence}%` : ''}</div>` : ''}
+    ${edgeLine}
   </div>`;
 }
 
@@ -412,7 +447,7 @@ async function loadGamesForSport(sport){
   list.innerHTML = '<div class="games-empty">Loading today\'s games…</div>';
   const { data, error } = await sb
     .from('daily_picks')
-    .select('sport,league,away_team,home_team,commence_time,ml_pick,ml_odds,spread_pick,spread_odds,total_pick,total_odds,best_pick_type,prop_pick,confidence,value_edge')
+    .select('sport,league,away_team,home_team,commence_time,ml_pick,ml_odds,spread_pick,spread_odds,total_pick,total_odds,best_pick_type,prop_pick,confidence,value_edge,best_book')
     .eq('game_date', todayStr)
     .eq('sport', sport)
     .order('commence_time', { ascending: true });
@@ -446,9 +481,9 @@ async function loadGamesForSport(sport){
   list.innerHTML = trimmedNote + rows.map((g, i)=>{
     const timeStr = g.commence_time ? new Date(g.commence_time).toLocaleTimeString([], {hour:'numeric', minute:'2-digit', timeZoneName:'short'}) : '';
     const pickLocked = !isSubscribed && i > 0;
-    const markets = marketBox('Moneyline', g.ml_pick, g.ml_odds, g.best_pick_type === 'Moneyline', g.confidence, pickLocked)
-      + marketBox('Spread', g.spread_pick, g.spread_odds, g.best_pick_type === 'Spread', g.confidence, pickLocked)
-      + marketBox('Total', g.total_pick, g.total_odds, g.best_pick_type === 'Total', g.confidence, pickLocked);
+    const markets = marketBox('Moneyline', g.ml_pick, g.ml_odds, g.best_pick_type === 'Moneyline', g.confidence, pickLocked, g.value_edge, g.best_book)
+      + marketBox('Spread', g.spread_pick, g.spread_odds, g.best_pick_type === 'Spread', g.confidence, pickLocked, g.value_edge, g.best_book)
+      + marketBox('Total', g.total_pick, g.total_odds, g.best_pick_type === 'Total', g.confidence, pickLocked, g.value_edge, g.best_book);
     const finalCallLine = pickLocked
       ? `<div class="gc-locked-line"><b>Final Call:</b> locked — <a href="#" class="prop-unlock-link">go Pro</a> to see our projection</div>`
       : '';
@@ -575,6 +610,34 @@ document.getElementById('parlayUnlockBtn').addEventListener('click', ()=>{
     openModal();
   }
 });
+
+/* ---------------- track record (real data from /api/stats) ---------------- */
+async function loadTrackRecord(){
+  const box = document.getElementById('trackRecordBox');
+  try {
+    const res = await fetch('/api/stats');
+    const data = await res.json();
+    const totalHits = data.reduce((s,r)=>s+r.hits,0);
+    const totalMisses = data.reduce((s,r)=>s+r.misses,0);
+    const totalGames = totalHits+totalMisses;
+    const overallRate = totalGames>0 ? ((totalHits/totalGames)*100).toFixed(1) : null;
+    const roiDays = data.filter(r=>r.roi!=null && r.total>0);
+    const roiWeighted = roiDays.reduce((s,r)=>s+(Number(r.roi)*r.total),0);
+    const roiGames = roiDays.reduce((s,r)=>s+r.total,0);
+    const overallRoi = roiGames>0 ? (roiWeighted/roiGames).toFixed(1) : null;
+    const todayRow = data.find(r=>r.date===todayStr);
+    box.innerHTML = `
+      <div class="tr-title">The Final Call Track Record</div>
+      <div class="tr-row"><span>Today</span><span>${todayRow ? `${todayRow.hits}-${todayRow.misses}` : 'No graded picks yet'}</span></div>
+      <div class="tr-row"><span>All-Time</span><span>${totalGames} picks${overallRate!=null ? ` · ${overallRate}% win rate` : ''}${overallRoi!=null ? ` · ${overallRoi>0?'+':''}${overallRoi}% ROI` : ''}</span></div>
+      <div class="tr-trust">All picks are timestamped before game start. Results are recorded automatically. No picks are removed or edited after publication.</div>
+      <a class="tr-link" href="/results-stats.html">View every pick →</a>
+    `;
+  } catch (e) {
+    box.innerHTML = '<div class="tr-title">The Final Call Track Record</div><div class="tr-row"><span>Unavailable right now — <a class="tr-link" href="/results-stats.html">view full stats</a></span></div>';
+  }
+}
+loadTrackRecord();
 
 /* ---------------- boot ---------------- */
 (async function boot(){
