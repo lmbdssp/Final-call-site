@@ -352,8 +352,8 @@ sb.auth.onAuthStateChange((event, session)=>{
 });
 
 async function enterApp(){
-  document.getElementById('authScreen').classList.add('hidden');
-  document.getElementById('appScreen').classList.remove('hidden');
+  document.getElementById('signinBar').classList.add('hidden');
+  document.getElementById('userBox').classList.remove('hidden');
   document.getElementById('userEmailLabel').textContent = currentUser.email;
   await refreshPlanUI();
 }
@@ -375,7 +375,9 @@ function closeModal(){ modal.classList.add('hidden'); }
 const refundAgree = document.getElementById('refundAgree');
 const subscribeConfirmBtn = document.getElementById('subscribeConfirm');
 refundAgree.addEventListener('change', ()=>{ subscribeConfirmBtn.disabled = !refundAgree.checked; });
-document.getElementById('openSubscribeBtn').addEventListener('click', openModal);
+document.getElementById('openSubscribeBtn').addEventListener('click', ()=>{
+  if(!currentUser){ goToSignIn(); } else { openModal(); }
+});
 document.getElementById('subscribeCancel').addEventListener('click', closeModal);
 document.getElementById('planWeekly').addEventListener('click', ()=>selectPlan('weekly'));
 document.getElementById('planMonthly').addEventListener('click', ()=>selectPlan('monthly'));
@@ -512,7 +514,15 @@ async function loadGamesForSport(sport){
   }).join('');
   void rows;
 
-  list.querySelectorAll('.prop-unlock-link').forEach(a=>a.addEventListener('click', (e)=>{ e.preventDefault(); openModal(); }));
+  list.querySelectorAll('.prop-unlock-link').forEach(a=>a.addEventListener('click', (e)=>{
+    e.preventDefault();
+    if(!currentUser){ goToSignIn(); } else { openModal(); }
+  }));
+
+  document.getElementById('signinNudge').classList.toggle('hidden', isSubscribed);
+  const nudgeLink = document.getElementById('signinNudgeLink');
+  nudgeLink.textContent = currentUser ? 'Go Pro to see every game\'s Final Call →' : 'Sign in to see every game\'s Final Call →';
+  nudgeLink.onclick = (e)=>{ e.preventDefault(); if(!currentUser){ goToSignIn(); } else { openModal(); } };
 }
 
 /* ---------------- public results calendar (free for everyone) ---------------- */
@@ -611,12 +621,12 @@ async function loadParlay(){
     document.getElementById('parlayLockMsg').textContent = currentUser ? 'Pro feature' : 'Sign in to unlock';
   }
 }
+function goToSignIn(){
+  document.getElementById('signinBar').classList.remove('hidden');
+  document.getElementById('signinBar').scrollIntoView({behavior:'smooth'});
+}
 document.getElementById('parlayUnlockBtn').addEventListener('click', ()=>{
-  if(!currentUser){
-    document.getElementById('authScreen').scrollIntoView({behavior:'smooth'});
-  } else {
-    openModal();
-  }
+  if(!currentUser){ goToSignIn(); } else { openModal(); }
 });
 
 /* ---------------- track record (real data from /api/stats) ---------------- */
@@ -650,7 +660,12 @@ loadTrackRecord();
 /* ---------------- boot ---------------- */
 (async function boot(){
   const { data: { session } } = await sb.auth.getSession();
-  if(session && session.user){ currentUser = session.user; enterApp(); }
+  if(session && session.user){
+    currentUser = session.user;
+    await enterApp();
+  } else {
+    document.getElementById('signinBar').classList.remove('hidden');
+  }
   await loadParlay();
 })();
 </script>
