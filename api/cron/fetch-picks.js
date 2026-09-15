@@ -399,6 +399,11 @@ export default async function handler(req, res) {
     }
 
     const parlayPickCount = allPicks.filter(p => p.is_parlay_pick).length;
+    // Real numbers only for the homepage "market status" widget — never
+    // fabricate a timestamp or count. books_max is the highest number of
+    // sportsbooks seen backing any single game's line, not a fixed total.
+    const booksMax = allPicks.reduce((m, p) => Math.max(m, p.books_counted || 0), 0);
+    await supabase.from('fetch_log').insert({ games_processed: allPicks.length, books_max: booksMax });
     res.status(200).json({ inserted: allPicks.length, parlayPicks: parlayPickCount });
   } catch (err) {
     console.error(err);

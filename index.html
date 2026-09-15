@@ -255,9 +255,9 @@ align-items:center; margin-bottom:16px; flex-wrap:wrap;}
 
     <div class="how-it-works">
       <div class="hiw-title">How We Call It</div>
-      <div class="hiw-step"><span class="hiw-num">01</span><span class="hiw-text"><b>We collect</b> live odds from every major sportsbook covering each game — not just one.</span></div>
-      <div class="hiw-step"><span class="hiw-num">02</span><span class="hiw-text"><b>We remove the vig</b> from each book's line and average them into a single consensus probability — the market's real opinion, without the bookmaker's built-in margin.</span></div>
-      <div class="hiw-step"><span class="hiw-num">03</span><span class="hiw-text"><b>We call it</b> — whichever side and market the consensus favors, priced at the best number available across every book we checked.</span></div>
+      <div class="hiw-step"><span class="hiw-num">01</span><span class="hiw-text"><b>We collect</b> live odds from multiple major sportsbooks covering each game — not just one.</span></div>
+      <div class="hiw-step"><span class="hiw-num">02</span><span class="hiw-text"><b>We remove the vig</b> from each book's line and average them into a single consensus probability — the market's consensus probability, without the bookmaker's built-in margin.</span></div>
+      <div class="hiw-step"><span class="hiw-num">03</span><span class="hiw-text"><b>We call it</b> — whichever side and market the consensus favors, priced at the best number available across the books we checked.</span></div>
     </div>
   </div>
 
@@ -287,7 +287,7 @@ align-items:center; margin-bottom:16px; flex-wrap:wrap;}
     <p class="sub">Choose a date to see how our Final Call projections graded out.</p>
     <div class="results-controls">
       <input type="date" id="resultsDate">
-      <button id="loadResultsBtn">Show results</button><a href="/results-stats.html" style="margin-left:auto; color:#999; align-self:center;font-size:12.5px; font-family:'Oswald',sans-serif;">See Our Win Rate →</a>
+      <button id="loadResultsBtn">Show results</button><a href="/results-stats.html" style="margin-left:auto; color:#999; align-self:center;font-size:12.5px; font-family:'Oswald',sans-serif;">View Full Track Record →</a>
 
     </div>
     <div id="resultsList"></div>
@@ -463,7 +463,11 @@ async function loadGamesForSport(sport){
     .order('commence_time', { ascending: true });
 
   if(error || !data || data.length === 0){
-    list.innerHTML = '<div class="games-empty">No games logged for today yet — check back this morning.</div>';
+    const { data: log } = await sb.from('fetch_log').select('ran_at').order('ran_at', { ascending: false }).limit(1).maybeSingle();
+    const lastUpdate = log ? new Date(log.ran_at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit', timeZoneName:'short'}) : null;
+    list.innerHTML = lastUpdate
+      ? `<div class="games-empty">Today's Final Calls are loading — we're waiting for today's market data to finish updating.<br><br>Last update: ${lastUpdate} · Next refresh: automatic</div>`
+      : `<div class="games-empty">No games logged for today yet. Check back shortly — this updates automatically each morning.</div>`;
     return;
   }
 
@@ -656,6 +660,16 @@ async function loadTrackRecord(){
   }
 }
 loadTrackRecord();
+
+/* ---------------- market status (real data from fetch_log) ---------------- */
+async function loadMarketStatus(){
+  const el = document.getElementById('marketStatus');
+  const { data } = await sb.from('fetch_log').select('ran_at,games_processed,books_max').order('ran_at', { ascending: false }).limit(1).maybeSingle();
+  if(!data){ el.innerHTML = ''; return; }
+  const time = new Date(data.ran_at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit', timeZoneName:'short'});
+  el.innerHTML = `<span><span class="dot">●</span> Data updated ${time}</span><span>${data.games_processed} games analyzed</span>${data.books_max ? `<span>Up to ${data.books_max} sportsbooks per game</span>` : ''}`;
+}
+loadMarketStatus();
 
 /* ---------------- boot ---------------- */
 (async function boot(){
