@@ -59,8 +59,20 @@
 
   <script>
     fetch('/api/stats')
-      .then(res => res.json())
+      .then(res => {
+        if (!res.ok) throw new Error(`stats endpoint returned ${res.status}`);
+        return res.json();
+      })
       .then(data => {
+        if (!Array.isArray(data)) throw new Error('unexpected stats response');
+
+        if (data.length === 0) {
+          document.getElementById('allTime').innerHTML = '<span>Track record will appear here once completed Final Calls are graded.</span>';
+          document.getElementById('statsBody').innerHTML = '<tr><td colspan="3">No graded picks yet.</td></tr>';
+          document.getElementById('roiChart').innerHTML = '<div class="note">No graded results yet.</div>';
+          return;
+        }
+
         // ---- Table: date, win rate, parlay ----
         const body = document.getElementById('statsBody');
         body.innerHTML = data.map(row => {
@@ -127,8 +139,9 @@
         }).join('');
       })
       .catch(err => {
-        document.getElementById('statsBody').innerHTML = '<tr><td colspan="3">Error loading stats</td></tr>';
-        document.getElementById('roiChart').innerHTML = '<div class="note">Error loading chart.</div>';
+        document.getElementById('allTime').innerHTML = '<span>Track record temporarily unavailable.</span>';
+        document.getElementById('statsBody').innerHTML = '<tr><td colspan="3">Track record temporarily unavailable.</td></tr>';
+        document.getElementById('roiChart').innerHTML = '<div class="note">Chart temporarily unavailable.</div>';
       });
   </script>
 </body>
