@@ -95,12 +95,36 @@ function americanToProb(odds) {
   return odds < 0 ? (-odds) / ((-odds) + 100) : 100 / (odds + 100);
 }
 
+// Confirmed classifications from The Odds API's actual book list (see
+// audit findings, Sept 2026). Anything not explicitly listed here is
+// 'unknown' and — same as exchanges — excluded from consensus/best-price/
+// scoring, per explicit instruction not to silently trust unknown sources.
+// Their raw data is still preserved in market_snapshots, just not used.
+const EXCHANGE_BOOKS = new Set(['Betfair', 'Smarkets', 'Matchbook']);
+const KNOWN_SPORTSBOOKS = new Set([
+  'DraftKings','Bovada','BetMGM','BetRivers','BetUS','BetOnline.ag','LowVig.ag',
+  'FanDuel','Caesars','Fanatics','MyBookie.ag','William Hill','LeoVegas','Grosvenor',
+  'Casumo','Virgin Bet','LiveScore Bet','Betfred (UK)','Coral','Ladbrokes','Sky Bet',
+  '888sport','BoyleSports','Betway','Paddy Power','Unibet (UK)','Betano (UK)',
+  'Bet Victor','Betfair Sportsbook',
+]);
+function classifySource(bookName) {
+  if (EXCHANGE_BOOKS.has(bookName)) return 'exchange';
+  if (KNOWN_SPORTSBOOKS.has(bookName)) return 'sportsbook';
+  return 'unknown';
+}
+
 // Every bookmaker that posted this market, not just the first one.
+// Tags each entry with source_type so downstream code can decide who
+// participates in consensus/best-price vs. who's just being recorded.
 function collectMarkets(bookmakers, key) {
   const out = [];
   for (const book of bookmakers || []) {
     const market = book.markets?.find(m => m.key === key);
-    if (market?.outcomes?.length) out.push({ book: book.title || book.key, outcomes: market.outcomes, lastUpdate: book.last_update || market.last_update || null });
+    if (market?.outcomes?.length) {
+      const bookName = book.title || book.key;
+      out.push({ book: bookName, outcomes: market.outcomes, lastUpdate: book.last_update || market.last_update || null, sourceType: classifySource(bookName) });
+    }
   }
   return out;
 }
@@ -124,10 +148,13 @@ function buildSnapshotRows(game, sportLabel, h2hEntries, spreadEntries, totalEnt
           point: o.point ?? null,
           american_odds: o.price,
           book_last_update: e.lastUpdate,
+          source_type: e.sourceType,
         });
       }
     }
   };
+  // Unfiltered — every book gets recorded, exchange/unknown included.
+  // This is the audit trail; filtering happens downstream, not here.
   push(h2hEntries, 'h2h');
   push(spreadEntries, 'spreads');
   push(totalEntries, 'totals');
@@ -257,6 +284,13 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     const h2hEntries = collectMarkets(game.bookmakers, 'h2h');
     const spreadEntriesAll = collectMarkets(game.bookmakers, 'spreads');
     const totalEntriesAll = collectMarkets(game.bookmakers, 'totals');
+    // Exchanges (and anything unclassified) are recorded above via
+    // buildSnapshotRows, but never participate in consensus, best-price,
+    // books_counted, or Value Edge — their pricing structure isn't
+    // comparable to a bookmaker's line (see audit, Sept 2026).
+    const h2hSb = h2hEntries.filter(e => e.sourceType === 'sportsbook');
+    const spreadEntriesAllSb = spreadEntriesAll.filter(e => e.sourceType === 'sportsbook');
+    const totalEntriesAllSb = totalEntriesAll.filter(e => e.sourceType === 'sportsbook');
     const h2h = findMarket(game.bookmakers, 'h2h');
     const spreadsMkt = findMarket(game.bookmakers, 'spreads');
     const totalsMkt = findMarket(game.bookmakers, 'totals');
@@ -272,8 +306,8 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     // --- Moneyline candidate (de-vigged consensus across books) ---
     let mlConfidence = 0, mlPickStr = null, mlOdds = null, mlTeam = null;
     let mlValue = null, mlBook = null, mlBooks = null, mlGates = null;
-    if (h2hEntries.length) {
-      const c = consensusTwoWay(h2hEntries, o => o.name === game.home_team, o => o.name === game.away_team);
+    if (h2hSb.length) {
+      const c = consensusTwoWay(h2hSb, o => o.name === game.home_team, o => o.name === game.away_team);
       if (c) {
         const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team);
         mlTeam = s.name; mlOdds = s.price; mlConfidence = s.confidence;
@@ -286,8 +320,8 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     // --- Spread candidate ---
     let spreadConfidence = 0, spreadPickStr = null, spreadOdds = null, spreadTeam = null, spreadPoint = null;
     let spreadValue = null, spreadBook = null, spreadBooks = null, spreadGates = null;
-    if (spreadEntriesAll.length) {
-      const entries = filterToModalPoint(spreadEntriesAll, game.home_team);
+    if (spreadEntriesAllSb.length) {
+      const entries = filterToModalPoint(spreadEntriesAllSb, game.home_team);
       const c = entries.length ? consensusTwoWay(entries, o => o.name === game.home_team, o => o.name === game.away_team) : null;
       if (c) {
         const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team);
@@ -301,8 +335,8 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     // --- Total candidate ---
     let totalConfidence = 0, totalPickStr = null, totalOdds = null, totalDirection = null, totalPoint = null;
     let totalValue = null, totalBook = null, totalBooks = null, totalGates = null;
-    if (totalEntriesAll.length) {
-      const entries = filterToModalPoint(totalEntriesAll, 'Over');
+    if (totalEntriesAllSb.length) {
+      const entries = filterToModalPoint(totalEntriesAllSb, 'Over');
       const c = entries.length ? consensusTwoWay(entries, o => o.name === 'Over', o => o.name === 'Under') : null;
       if (c) {
         const s = buildSide(c, c.probA >= c.probB, 'Over', 'Under');
