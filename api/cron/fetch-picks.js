@@ -448,7 +448,11 @@ export default async function handler(req, res) {
     // Pull the candidate data out before upsert — daily_picks has no such
     // column, and PostgREST rejects unknown keys. Keyed by natural key so
     // it can be re-attached to the correct row once we have real pick ids.
-    const keyOf = p => `${p.sport}|${p.away_team}|${p.home_team}|${p.commence_time}`;
+    // Compare as actual timestamps, not raw strings — Postgres returns
+    // "2026-09-16 02:00:00+00" while the odds feed gives us
+    // "2026-09-16T02:00:00Z". Those never match character-for-character,
+    // which silently broke every candidate lookup below.
+    const keyOf = p => `${p.sport}|${p.away_team}|${p.home_team}|${new Date(p.commence_time).getTime()}`;
     const candidatesByKey = {};
     allPicks.forEach(p => {
       candidatesByKey[keyOf(p)] = p._candidateRecords;
