@@ -489,6 +489,7 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows, evaluatedAt) {
     // --- Total candidate ---
     let totalConfidence = 0, totalPickStr = null, totalOdds = null, totalDirection = null, totalPoint = null;
     let totalValue = null, totalBook = null, totalBooks = null, totalGates = null;
+    let totalOtherSide = null; // the other side of the same line — analysis only, mirrors spreadOtherSide
     if (totalEntriesAllSb.length) {
       const totalResult = bestLineCandidate(totalEntriesAllSb, 'Over', o => o.name === 'Over', o => o.name === 'Under', 'Over', 'Under', evaluatedAt);
       if (totalResult) {
@@ -500,6 +501,7 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows, evaluatedAt) {
           oldestAgeSec: s.oldestAgeSec, syncWindowSec: s.syncWindowSec, bestPriceAgeSec: s.bestPriceAgeSec,
           freshnessPass: s.gateFreshnessPass, freshnessFailReason: s.freshnessFailReason };
         totalPickStr = `${totalDirection} ${totalPoint}`;
+        totalOtherSide = totalResult.other;
       }
     }
 
@@ -600,6 +602,25 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows, evaluatedAt) {
         odds: side.price, team: side.name, point: side.point, direction: null, book: side.book,
         books_counted: side.books,
         summary: `${side.name} ${side.point > 0 ? '+' : ''}${side.point}`,
+        selection_score: null,
+        consensus_std_dev: side.consensusStdDev != null ? Math.round(side.consensusStdDev * 10000) / 10000 : null,
+        gate_edge_pass: side.gateEdgePass, gate_books_pass: side.gateBooksPass,
+        gate_agreement_pass: side.gateAgreementPass, gate_pass: side.gatePass,
+        oldest_quote_at: side.oldestQuoteAt, newest_quote_at: side.newestQuoteAt, best_price_quote_at: side.bestPriceQuoteAt,
+        oldest_quote_age_seconds: side.oldestAgeSec, sync_window_seconds: side.syncWindowSec, best_price_age_seconds: side.bestPriceAgeSec,
+        freshness_max_age_seconds: FRESHNESS_MAX_QUOTE_AGE_SECONDS, freshness_max_sync_seconds: FRESHNESS_MAX_SYNC_WINDOW_SECONDS,
+        gate_freshness_pass: side.gateFreshnessPass, freshness_fail_reason: side.freshnessFailReason,
+      });
+    }
+    if (totalOtherSide) {
+      const side = totalOtherSide;
+      otherSideRecords.push({
+        market_type: 'Total', selected: false,
+        confidence: side.confidence,
+        value_edge: side.value != null ? Math.round(side.value * 1000) / 10 : null,
+        odds: side.price, team: null, point: side.point, direction: side.name, book: side.book,
+        books_counted: side.books,
+        summary: `${side.name} ${side.point}`,
         selection_score: null,
         consensus_std_dev: side.consensusStdDev != null ? Math.round(side.consensusStdDev * 10000) / 10000 : null,
         gate_edge_pass: side.gateEdgePass, gate_books_pass: side.gateBooksPass,
