@@ -193,19 +193,19 @@ const MIN_BOOKS_PER_LINE = 2;
 // instead of collapsing to whichever line happens to be most common. The
 // most-quoted line isn't necessarily the one with the best value — this
 // was previously discarding 12-29% of book coverage for no good reason.
-function bestLineCandidate(entries, sideName, matchA, matchB, nameA, nameB) {
+function bestLineCandidate(entries, sideName, matchA, matchB, nameA, nameB, evaluatedAt) {
   const groups = groupByPoint(entries, sideName);
   let best = null, bestOther = null;
   for (const [, lineEntries] of groups) {
     const c = consensusTwoWay(lineEntries, matchA, matchB);
     if (!c || c.books < MIN_BOOKS_PER_LINE) continue;
-    const s = buildSide(c, c.probA >= c.probB, nameA, nameB);
+    const s = buildSide(c, c.probA >= c.probB, nameA, nameB, evaluatedAt);
     const score = s.confidence + (s.value != null ? s.value * 100 : 0);
     if (!best || score > best.score) {
       best = { ...s, score };
       // The other side of this same line — not eliminated, just not the
       // one used for the live pick. Analysis-only.
-      bestOther = buildSide(c, !(c.probA >= c.probB), nameA, nameB);
+      bestOther = buildSide(c, !(c.probA >= c.probB), nameA, nameB, evaluatedAt);
     }
   }
   return best ? { primary: best, other: bestOther } : null;
@@ -221,11 +221,18 @@ function stdDev(arr) {
   return Math.sqrt(variance);
 }
 
+function oldestOf(dates) { return dates.length ? dates.reduce((a, b) => (a < b ? a : b)) : null; }
+function newestOf(dates) { return dates.length ? dates.reduce((a, b) => (a > b ? a : b)) : null; }
+
 // De-vig each book, average into a consensus, and track which book is
 // offering the best price on each side. Higher American odds are always
-// better for the bettor, so a plain numeric max works here.
+// better for the bettor, so a plain numeric max works here. Also tracks
+// each contributing quote's own timestamp, so freshness can be evaluated
+// per candidate later — this function still only computes probabilities
+// and prices; it does not decide freshness pass/fail.
 function consensusTwoWay(entries, matchA, matchB) {
   const probsA = [], probsB = [];
+  const quoteTimes = [];
   let bestA = null, bestB = null;
   for (const entry of entries) {
     const oa = entry.outcomes.find(matchA);
@@ -235,12 +242,17 @@ function consensusTwoWay(entries, matchA, matchB) {
     if (!dv) continue;
     probsA.push(dv.a);
     probsB.push(dv.b);
-    if (!bestA || oa.price > bestA.price) bestA = { price: oa.price, book: entry.book, point: oa.point };
-    if (!bestB || ob.price > bestB.price) bestB = { price: ob.price, book: entry.book, point: ob.point };
+    if (entry.lastUpdate) quoteTimes.push(new Date(entry.lastUpdate));
+    if (!bestA || oa.price > bestA.price) bestA = { price: oa.price, book: entry.book, point: oa.point, lastUpdate: entry.lastUpdate };
+    if (!bestB || ob.price > bestB.price) bestB = { price: ob.price, book: entry.book, point: ob.point, lastUpdate: entry.lastUpdate };
   }
   if (!probsA.length) return null;
   const avg = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
-  return { probA: avg(probsA), probB: avg(probsB), bestA, bestB, books: probsA.length, stdDevA: stdDev(probsA), stdDevB: stdDev(probsB) };
+  return {
+    probA: avg(probsA), probB: avg(probsB), bestA, bestB, books: probsA.length,
+    stdDevA: stdDev(probsA), stdDevB: stdDev(probsB),
+    oldestQuoteAt: oldestOf(quoteTimes), newestQuoteAt: newestOf(quoteTimes),
+  };
 }
 
 // Testing thresholds only — hypotheses to validate against real graded
@@ -249,53 +261,84 @@ const GATE_MIN_EDGE_PP = 2.0;
 const GATE_MIN_BOOKS = 4;
 const GATE_MAX_STD_DEV = 0.03; // 3 probability points
 
+// Freshness thresholds — same status as the gates above: configurable
+// placeholders for the diagnostic, not a chosen production cutoff. Stored
+// as gate_freshness_pass/freshness_fail_reason for every candidate, but
+// NOT currently used to filter live selection (see selectionScore below,
+// which is unchanged) or to activate NO CALL.
+const FRESHNESS_MAX_QUOTE_AGE_SECONDS = 900;   // 15 min
+const FRESHNESS_MAX_SYNC_WINDOW_SECONDS = 600; // 10 min
+
 // Core math for one side of a market, given its own probability and its
 // own best price. Used for whichever side is "favored" AND for the side
 // that isn't — raw probability never excludes a side before this runs.
-function makeSide(trueProb, best, name, books, consensusStdDev) {
+// evaluatedAt/oldestQuoteAt/newestQuoteAt come from the consensus this
+// side was built from, so freshness reflects the actual quotes used —
+// not a guess or a separate lookup.
+function makeSide(trueProb, best, name, books, consensusStdDev, oldestQuoteAt, newestQuoteAt, evaluatedAt) {
   const value = trueProb - americanToProb(best.price);
   const valueEdgePp = Math.round(value * 1000) / 10;
   const gateEdgePass = valueEdgePp >= GATE_MIN_EDGE_PP;
   const gateBooksPass = books >= GATE_MIN_BOOKS;
   const gateAgreementPass = consensusStdDev != null && consensusStdDev <= GATE_MAX_STD_DEV;
+  const bestPriceQuoteAt = best.lastUpdate || null;
+  const oldestAgeSec = oldestQuoteAt ? Math.round((evaluatedAt - oldestQuoteAt) / 1000) : null;
+  const syncWindowSec = (oldestQuoteAt && newestQuoteAt) ? Math.round((newestQuoteAt - oldestQuoteAt) / 1000) : null;
+  const bestPriceAgeSec = bestPriceQuoteAt ? Math.round((evaluatedAt - new Date(bestPriceQuoteAt)) / 1000) : null;
+  let freshnessFailReason = null;
+  if (oldestAgeSec == null || syncWindowSec == null || bestPriceAgeSec == null) {
+    freshnessFailReason = 'missing_freshness_metadata';
+  } else if (oldestAgeSec > FRESHNESS_MAX_QUOTE_AGE_SECONDS) {
+    freshnessFailReason = 'quote_too_old';
+  } else if (syncWindowSec > FRESHNESS_MAX_SYNC_WINDOW_SECONDS) {
+    freshnessFailReason = 'quotes_not_synchronized';
+  } else if (bestPriceAgeSec > FRESHNESS_MAX_QUOTE_AGE_SECONDS) {
+    freshnessFailReason = 'best_price_stale';
+  }
+  const gateFreshnessPass = freshnessFailReason === null;
   return {
     name, price: best.price, point: best.point, book: best.book,
     confidence: Math.round(trueProb * 100),
     value, books, consensusStdDev,
     gateEdgePass, gateBooksPass, gateAgreementPass,
-    gatePass: gateEdgePass && gateBooksPass && gateAgreementPass,
+    oldestQuoteAt, newestQuoteAt, bestPriceQuoteAt,
+    oldestAgeSec, syncWindowSec, bestPriceAgeSec,
+    gateFreshnessPass, freshnessFailReason,
+    // Freshness now included for completeness, but this field is still
+    // metadata only — nothing downstream filters on it yet.
+    gatePass: gateEdgePass && gateBooksPass && gateAgreementPass && gateFreshnessPass,
   };
 }
 
 // Given a consensus result, build the candidate for whichever side the
 // market favors, priced at the best book available. Live selection still
 // uses this — production behavior is unchanged by this fix.
-function buildSide(c, favorA, nameA, nameB) {
+function buildSide(c, favorA, nameA, nameB, evaluatedAt) {
   const useA = favorA;
   const best = useA ? c.bestA : c.bestB;
   const trueProb = useA ? c.probA : c.probB;
   const stdDevSide = useA ? c.stdDevA : c.stdDevB;
-  return makeSide(trueProb, best, useA ? nameA : nameB, c.books, stdDevSide);
+  return makeSide(trueProb, best, useA ? nameA : nameB, c.books, stdDevSide, c.oldestQuoteAt, c.newestQuoteAt, evaluatedAt);
 }
 
 // Both sides of a two-way market as fully independent candidates. Neither
 // side is eliminated by raw win probability before its own Value Edge is
 // computed — this is what the favorite-only bug audit (Sept 2026) found
 // missing. Analysis-only: does not feed the live selection.
-function bothSides(c, nameA, nameB) {
+function bothSides(c, nameA, nameB, evaluatedAt) {
   return [
-    makeSide(c.probA, c.bestA, nameA, c.books, c.stdDevA),
-    makeSide(c.probB, c.bestB, nameB, c.books, c.stdDevB),
+    makeSide(c.probA, c.bestA, nameA, c.books, c.stdDevA, c.oldestQuoteAt, c.newestQuoteAt, evaluatedAt),
+    makeSide(c.probB, c.bestB, nameB, c.books, c.stdDevB, c.oldestQuoteAt, c.newestQuoteAt, evaluatedAt),
   ];
 }
 
 // All three soccer moneyline outcomes as independent candidates, using
 // the corrected 3-way de-vig. Analysis-only, same as bothSides.
-function threeWaySidesAll(c, homeTeam, awayTeam) {
+function threeWaySidesAll(c, homeTeam, awayTeam, evaluatedAt) {
   return [
-    makeSide(c.probA, c.bestA, homeTeam, c.books, c.stdDevA),
-    makeSide(c.probDraw, c.bestDraw, 'Draw', c.books, c.stdDevDraw),
-    makeSide(c.probB, c.bestB, awayTeam, c.books, c.stdDevB),
+    makeSide(c.probA, c.bestA, homeTeam, c.books, c.stdDevA, c.oldestQuoteAt, c.newestQuoteAt, evaluatedAt),
+    makeSide(c.probDraw, c.bestDraw, 'Draw', c.books, c.stdDevDraw, c.oldestQuoteAt, c.newestQuoteAt, evaluatedAt),
+    makeSide(c.probB, c.bestB, awayTeam, c.books, c.stdDevB, c.oldestQuoteAt, c.newestQuoteAt, evaluatedAt),
   ];
 }
 
@@ -331,6 +374,7 @@ function devigThreeWay(priceHome, priceDraw, priceAway) {
 // ignoring it.
 function consensusThreeWay(entries, homeTeam, awayTeam) {
   const homeProbs = [], awayProbs = [], drawProbs = [];
+  const quoteTimes = [];
   let bestHome = null, bestAway = null, bestDraw = null;
   for (const entry of entries) {
     const oh = entry.outcomes.find(o => o.name === homeTeam);
@@ -342,9 +386,10 @@ function consensusThreeWay(entries, homeTeam, awayTeam) {
     homeProbs.push(dv.home);
     awayProbs.push(dv.away);
     drawProbs.push(dv.draw);
-    if (!bestHome || oh.price > bestHome.price) bestHome = { price: oh.price, book: entry.book, point: null };
-    if (!bestAway || oa.price > bestAway.price) bestAway = { price: oa.price, book: entry.book, point: null };
-    if (!bestDraw || od.price > bestDraw.price) bestDraw = { price: od.price, book: entry.book, point: null };
+    if (entry.lastUpdate) quoteTimes.push(new Date(entry.lastUpdate));
+    if (!bestHome || oh.price > bestHome.price) bestHome = { price: oh.price, book: entry.book, point: null, lastUpdate: entry.lastUpdate };
+    if (!bestAway || oa.price > bestAway.price) bestAway = { price: oa.price, book: entry.book, point: null, lastUpdate: entry.lastUpdate };
+    if (!bestDraw || od.price > bestDraw.price) bestDraw = { price: od.price, book: entry.book, point: null, lastUpdate: entry.lastUpdate };
   }
   if (!homeProbs.length) return null;
   const avg = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
@@ -353,10 +398,11 @@ function consensusThreeWay(entries, homeTeam, awayTeam) {
     bestA: bestHome, bestB: bestAway, bestDraw,
     books: homeProbs.length,
     stdDevA: stdDev(homeProbs), stdDevB: stdDev(awayProbs), stdDevDraw: stdDev(drawProbs),
+    oldestQuoteAt: oldestOf(quoteTimes), newestQuoteAt: newestOf(quoteTimes),
   };
 }
 
-async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
+async function fetchSportOdds(sportLabel, sportKey, snapshotRows, evaluatedAt) {
   const regions = sportLabel === 'Soccer' ? 'us,uk' : 'us';
   const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=${regions}&markets=h2h,spreads,totals&oddsFormat=american`;
   const res = await fetchWithRetry(url);
@@ -405,15 +451,18 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
         ? consensusThreeWay(h2hSb, game.home_team, game.away_team)
         : consensusTwoWay(h2hSb, o => o.name === game.home_team, o => o.name === game.away_team);
       if (c) {
-        const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team);
+        const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team, evaluatedAt);
         mlTeam = s.name; mlOdds = s.price; mlConfidence = s.confidence;
         mlValue = s.value; mlBook = s.book; mlBooks = s.books;
-        mlGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass };
+        mlGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass,
+          oldestQuoteAt: s.oldestQuoteAt, newestQuoteAt: s.newestQuoteAt, bestPriceQuoteAt: s.bestPriceQuoteAt,
+          oldestAgeSec: s.oldestAgeSec, syncWindowSec: s.syncWindowSec, bestPriceAgeSec: s.bestPriceAgeSec,
+          freshnessPass: s.gateFreshnessPass, freshnessFailReason: s.freshnessFailReason };
         mlPickStr = `${mlTeam} ML`;
 
         const allSides = sportLabel === 'Soccer'
-          ? threeWaySidesAll(c, game.home_team, game.away_team)
-          : bothSides(c, game.home_team, game.away_team);
+          ? threeWaySidesAll(c, game.home_team, game.away_team, evaluatedAt)
+          : bothSides(c, game.home_team, game.away_team, evaluatedAt);
         mlOtherSides = allSides.filter(side => side.name !== s.name);
       }
     }
@@ -423,12 +472,15 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     let spreadValue = null, spreadBook = null, spreadBooks = null, spreadGates = null;
     let spreadOtherSide = null; // the other side of the same line — analysis only
     if (spreadEntriesAllSb.length) {
-      const result = bestLineCandidate(spreadEntriesAllSb, game.home_team, o => o.name === game.home_team, o => o.name === game.away_team, game.home_team, game.away_team);
+      const result = bestLineCandidate(spreadEntriesAllSb, game.home_team, o => o.name === game.home_team, o => o.name === game.away_team, game.home_team, game.away_team, evaluatedAt);
       const s = result?.primary;
       if (s) {
         spreadTeam = s.name; spreadOdds = s.price; spreadPoint = s.point;
         spreadConfidence = s.confidence; spreadValue = s.value; spreadBook = s.book; spreadBooks = s.books;
-        spreadGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass };
+        spreadGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass,
+          oldestQuoteAt: s.oldestQuoteAt, newestQuoteAt: s.newestQuoteAt, bestPriceQuoteAt: s.bestPriceQuoteAt,
+          oldestAgeSec: s.oldestAgeSec, syncWindowSec: s.syncWindowSec, bestPriceAgeSec: s.bestPriceAgeSec,
+          freshnessPass: s.gateFreshnessPass, freshnessFailReason: s.freshnessFailReason };
         spreadPickStr = `${spreadTeam} ${spreadPoint > 0 ? '+' : ''}${spreadPoint}`;
         spreadOtherSide = result.other;
       }
@@ -438,12 +490,15 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     let totalConfidence = 0, totalPickStr = null, totalOdds = null, totalDirection = null, totalPoint = null;
     let totalValue = null, totalBook = null, totalBooks = null, totalGates = null;
     if (totalEntriesAllSb.length) {
-      const totalResult = bestLineCandidate(totalEntriesAllSb, 'Over', o => o.name === 'Over', o => o.name === 'Under', 'Over', 'Under');
+      const totalResult = bestLineCandidate(totalEntriesAllSb, 'Over', o => o.name === 'Over', o => o.name === 'Under', 'Over', 'Under', evaluatedAt);
       if (totalResult) {
         const s = totalResult.primary;
         totalDirection = s.name; totalOdds = s.price; totalPoint = s.point;
         totalConfidence = s.confidence; totalValue = s.value; totalBook = s.book; totalBooks = s.books;
-        totalGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass };
+        totalGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass,
+          oldestQuoteAt: s.oldestQuoteAt, newestQuoteAt: s.newestQuoteAt, bestPriceQuoteAt: s.bestPriceQuoteAt,
+          oldestAgeSec: s.oldestAgeSec, syncWindowSec: s.syncWindowSec, bestPriceAgeSec: s.bestPriceAgeSec,
+          freshnessPass: s.gateFreshnessPass, freshnessFailReason: s.freshnessFailReason };
         totalPickStr = `${totalDirection} ${totalPoint}`;
       }
     }
@@ -501,6 +556,16 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
       gate_books_pass: c.gates?.booksPass ?? null,
       gate_agreement_pass: c.gates?.agreementPass ?? null,
       gate_pass: c.gates?.pass ?? null,
+      oldest_quote_at: c.gates?.oldestQuoteAt ?? null,
+      newest_quote_at: c.gates?.newestQuoteAt ?? null,
+      best_price_quote_at: c.gates?.bestPriceQuoteAt ?? null,
+      oldest_quote_age_seconds: c.gates?.oldestAgeSec ?? null,
+      sync_window_seconds: c.gates?.syncWindowSec ?? null,
+      best_price_age_seconds: c.gates?.bestPriceAgeSec ?? null,
+      freshness_max_age_seconds: FRESHNESS_MAX_QUOTE_AGE_SECONDS,
+      freshness_max_sync_seconds: FRESHNESS_MAX_SYNC_WINDOW_SECONDS,
+      gate_freshness_pass: c.gates?.freshnessPass ?? null,
+      freshness_fail_reason: c.gates?.freshnessFailReason ?? null,
     }));
 
     // The side(s) NOT used for the live pick — favorite-only bug audit
@@ -520,6 +585,10 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
         consensus_std_dev: side.consensusStdDev != null ? Math.round(side.consensusStdDev * 10000) / 10000 : null,
         gate_edge_pass: side.gateEdgePass, gate_books_pass: side.gateBooksPass,
         gate_agreement_pass: side.gateAgreementPass, gate_pass: side.gatePass,
+        oldest_quote_at: side.oldestQuoteAt, newest_quote_at: side.newestQuoteAt, best_price_quote_at: side.bestPriceQuoteAt,
+        oldest_quote_age_seconds: side.oldestAgeSec, sync_window_seconds: side.syncWindowSec, best_price_age_seconds: side.bestPriceAgeSec,
+        freshness_max_age_seconds: FRESHNESS_MAX_QUOTE_AGE_SECONDS, freshness_max_sync_seconds: FRESHNESS_MAX_SYNC_WINDOW_SECONDS,
+        gate_freshness_pass: side.gateFreshnessPass, freshness_fail_reason: side.freshnessFailReason,
       });
     }
     if (spreadOtherSide) {
@@ -535,6 +604,10 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
         consensus_std_dev: side.consensusStdDev != null ? Math.round(side.consensusStdDev * 10000) / 10000 : null,
         gate_edge_pass: side.gateEdgePass, gate_books_pass: side.gateBooksPass,
         gate_agreement_pass: side.gateAgreementPass, gate_pass: side.gatePass,
+        oldest_quote_at: side.oldestQuoteAt, newest_quote_at: side.newestQuoteAt, best_price_quote_at: side.bestPriceQuoteAt,
+        oldest_quote_age_seconds: side.oldestAgeSec, sync_window_seconds: side.syncWindowSec, best_price_age_seconds: side.bestPriceAgeSec,
+        freshness_max_age_seconds: FRESHNESS_MAX_QUOTE_AGE_SECONDS, freshness_max_sync_seconds: FRESHNESS_MAX_SYNC_WINDOW_SECONDS,
+        gate_freshness_pass: side.gateFreshnessPass, freshness_fail_reason: side.freshnessFailReason,
       });
     }
     candidateRecords.push(...otherSideRecords);
@@ -620,10 +693,14 @@ export default async function handler(req, res) {
 
     let allPicks = [];
     const snapshotRows = [];
+    // One evaluation timestamp for the whole run, so every candidate's
+    // quote-age is measured against the same moment rather than drifting
+    // second-to-second across a multi-sport fetch.
+    const evaluatedAt = new Date();
     for (const [label, keys] of Object.entries(SPORT_KEYS)) {
       const keyList = Array.isArray(keys) ? keys : [keys];
       for (const key of keyList) {
-        const picks = await fetchSportOdds(label, key, snapshotRows);
+        const picks = await fetchSportOdds(label, key, snapshotRows, evaluatedAt);
         allPicks = allPicks.concat(picks);
       }
     }
