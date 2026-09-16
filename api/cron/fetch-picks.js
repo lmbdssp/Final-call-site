@@ -284,6 +284,52 @@ function bestValueSide(c, nameA, nameB) {
   return sideA.value >= sideB.value ? sideA : sideB;
 }
 
+// De-vig a genuine 3-way market (Home/Draw/Away) correctly. Dividing only
+// by Home+Away (as a 2-way de-vig would) silently drops the Draw's
+// probability mass — typically 20-30pp in soccer — which systematically
+// inflates both Home and Away's "fair" probability. This was confirmed
+// against real production data (Málaga @ Getafe, Sept 2026): the 2-way
+// math reported 64.3% for a side whose correct 3-way probability was 44.8%.
+function devigThreeWay(priceHome, priceDraw, priceAway) {
+  const rawHome = americanToProb(priceHome);
+  const rawDraw = americanToProb(priceDraw);
+  const rawAway = americanToProb(priceAway);
+  const sum = rawHome + rawDraw + rawAway;
+  if (!sum) return null;
+  return { home: rawHome / sum, draw: rawDraw / sum, away: rawAway / sum };
+}
+
+// Soccer moneylines are a 3-way market. This returns the same shape as
+// consensusTwoWay (probA/probB/bestA/bestB/books/stdDevA/stdDevB) so it
+// plugs directly into the existing buildSide/bestValueSide logic — Draw
+// itself is still not a pickable outcome, only Home/Away compete, but
+// their probabilities now correctly account for Draw's share instead of
+// ignoring it.
+function consensusThreeWay(entries, homeTeam, awayTeam) {
+  const homeProbs = [], awayProbs = [];
+  let bestHome = null, bestAway = null;
+  for (const entry of entries) {
+    const oh = entry.outcomes.find(o => o.name === homeTeam);
+    const od = entry.outcomes.find(o => o.name === 'Draw');
+    const oa = entry.outcomes.find(o => o.name === awayTeam);
+    if (!oh || !od || !oa) continue; // need all three to properly de-vig
+    const dv = devigThreeWay(oh.price, od.price, oa.price);
+    if (!dv) continue;
+    homeProbs.push(dv.home);
+    awayProbs.push(dv.away);
+    if (!bestHome || oh.price > bestHome.price) bestHome = { price: oh.price, book: entry.book, point: null };
+    if (!bestAway || oa.price > bestAway.price) bestAway = { price: oa.price, book: entry.book, point: null };
+  }
+  if (!homeProbs.length) return null;
+  const avg = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
+  return {
+    probA: avg(homeProbs), probB: avg(awayProbs),
+    bestA: bestHome, bestB: bestAway,
+    books: homeProbs.length,
+    stdDevA: stdDev(homeProbs), stdDevB: stdDev(awayProbs),
+  };
+}
+
 async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
   const regions = sportLabel === 'Soccer' ? 'us,uk' : 'us';
   const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=${regions}&markets=h2h,spreads,totals&oddsFormat=american`;
@@ -326,7 +372,11 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     let mlConfidence = 0, mlPickStr = null, mlOdds = null, mlTeam = null;
     let mlValue = null, mlBook = null, mlBooks = null, mlGates = null;
     if (h2hSb.length) {
-      const c = consensusTwoWay(h2hSb, o => o.name === game.home_team, o => o.name === game.away_team);
+      // Soccer's moneyline is a real 3-way market (Home/Draw/Away) — a
+      // plain 2-way de-vig ignores Draw entirely and inflates both sides.
+      const c = sportLabel === 'Soccer'
+        ? consensusThreeWay(h2hSb, game.home_team, game.away_team)
+        : consensusTwoWay(h2hSb, o => o.name === game.home_team, o => o.name === game.away_team);
       if (c) {
         const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team);
         mlTeam = s.name; mlOdds = s.price; mlConfidence = s.confidence;
