@@ -313,6 +313,24 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     const best = (straightCandidates.length ? straightCandidates : candidates)
       .reduce((a, b) => (selectionScore(b) > selectionScore(a) ? b : a));
 
+    // Preserve every candidate considered, not just the winner — otherwise
+    // "why did Total beat Moneyline" can never be answered after the fact,
+    // even with market_snapshots. Purely additive: does not affect `best`.
+    const candidateRecords = candidates.map(c => ({
+      market_type: c.type,
+      selected: c === best,
+      confidence: c.confidence,
+      value_edge: c.value != null ? Math.round(c.value * 1000) / 10 : null,
+      odds: c.odds,
+      team: c.team,
+      point: c.point,
+      direction: c.direction,
+      book: c.book,
+      books_counted: c.books,
+      summary: c.summary,
+      selection_score: Math.round(selectionScore(c) * 100) / 100,
+    }));
+
     const parlayCandidates = candidates.filter(c => c.odds == null || c.odds > MAX_PARLAY_ODDS);
     const parlayBest = (parlayCandidates.length ? parlayCandidates : candidates)
       .reduce((a, b) => (b.confidence > a.confidence ? b : a));
@@ -373,6 +391,7 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
       is_parlay_pick: false,
       updated_at: new Date().toISOString(),
       algorithm_version: 'consensus-v1',
+      _candidateRecords: candidateRecords, // transient — stripped before the daily_picks upsert
     });
   }
   return picks;
@@ -426,12 +445,43 @@ export default async function handler(req, res) {
       return res.status(200).json({ inserted: 0, note: 'No games returned — check quota/sport keys.' });
     }
 
-    const { error } = await supabase.from('daily_picks').upsert(allPicks, {
-      onConflict: 'sport,away_team,home_team,commence_time',
+    // Pull the candidate data out before upsert — daily_picks has no such
+    // column, and PostgREST rejects unknown keys. Keyed by natural key so
+    // it can be re-attached to the correct row once we have real pick ids.
+    const keyOf = p => `${p.sport}|${p.away_team}|${p.home_team}|${p.commence_time}`;
+    const candidatesByKey = {};
+    allPicks.forEach(p => {
+      candidatesByKey[keyOf(p)] = p._candidateRecords;
+      delete p._candidateRecords;
     });
+
+    const { data: upsertedPicks, error } = await supabase
+      .from('daily_picks')
+      .upsert(allPicks, { onConflict: 'sport,away_team,home_team,commence_time' })
+      .select('id,sport,away_team,home_team,commence_time');
     if (error) {
       console.error(error);
       return res.status(500).json({ error: 'Insert failed', detail: error.message });
+    }
+
+    // Replace this run's candidate rows for each pick rather than
+    // accumulating duplicates across daily re-fetches of the same game.
+    const pickIds = (upsertedPicks || []).map(p => p.id);
+    if (pickIds.length) {
+      await supabase.from('pick_candidates').delete().in('pick_id', pickIds);
+    }
+    const candidateRows = [];
+    for (const p of upsertedPicks || []) {
+      const records = candidatesByKey[keyOf(p)];
+      if (!records) continue;
+      for (const rec of records) candidateRows.push({ ...rec, pick_id: p.id });
+    }
+    if (candidateRows.length) {
+      const CHUNK = 500;
+      for (let i = 0; i < candidateRows.length; i += CHUNK) {
+        const { error: candErr } = await supabase.from('pick_candidates').insert(candidateRows.slice(i, i + CHUNK));
+        if (candErr) console.error('Candidate insert failed:', candErr.message);
+      }
     }
 
     const parlayPickCount = allPicks.filter(p => p.is_parlay_pick).length;
