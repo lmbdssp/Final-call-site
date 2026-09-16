@@ -100,9 +100,38 @@ function collectMarkets(bookmakers, key) {
   const out = [];
   for (const book of bookmakers || []) {
     const market = book.markets?.find(m => m.key === key);
-    if (market?.outcomes?.length) out.push({ book: book.title || book.key, outcomes: market.outcomes });
+    if (market?.outcomes?.length) out.push({ book: book.title || book.key, outcomes: market.outcomes, lastUpdate: book.last_update || market.last_update || null });
   }
   return out;
+}
+
+// Raw per-book quotes for one game, across all three markets — this is
+// the input data a consensus/pick was built from. Preserved so a past
+// Final Call can eventually be reproduced exactly, not just re-described.
+function buildSnapshotRows(game, sportLabel, h2hEntries, spreadEntries, totalEntries) {
+  const rows = [];
+  const push = (entries, marketType) => {
+    for (const e of entries) {
+      for (const o of e.outcomes) {
+        rows.push({
+          sport: sportLabel,
+          away_team: game.away_team,
+          home_team: game.home_team,
+          commence_time: game.commence_time,
+          market_type: marketType,
+          book: e.book,
+          selection: o.name,
+          point: o.point ?? null,
+          american_odds: o.price,
+          book_last_update: e.lastUpdate,
+        });
+      }
+    }
+  };
+  push(h2hEntries, 'h2h');
+  push(spreadEntries, 'spreads');
+  push(totalEntries, 'totals');
+  return rows;
 }
 
 // Strip the bookmaker's margin: raw implied probabilities on a two-way
@@ -180,7 +209,7 @@ function bestValueSide(c, nameA, nameB) {
   return sideA.value >= sideB.value ? sideA : sideB;
 }
 
-async function fetchSportOdds(sportLabel, sportKey) {
+async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
   const regions = sportLabel === 'Soccer' ? 'us,uk' : 'us';
   const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=${regions}&markets=h2h,spreads,totals&oddsFormat=american`;
   const res = await fetchWithRetry(url);
@@ -206,6 +235,10 @@ async function fetchSportOdds(sportLabel, sportKey) {
     // Spread or Total (common for lopsided FBS-vs-FCS-style mismatches
     // where books skip posting a Moneyline) should still show up.
     if (!h2h && !spreadsMkt && !totalsMkt) continue;
+
+    if (snapshotRows) {
+      snapshotRows.push(...buildSnapshotRows(game, sportLabel, h2hEntries, spreadEntriesAll, totalEntriesAll));
+    }
 
     // --- Moneyline candidate (de-vigged consensus across books) ---
     let mlConfidence = 0, mlPickStr = null, mlOdds = null, mlTeam = null;
@@ -339,6 +372,7 @@ async function fetchSportOdds(sportLabel, sportKey) {
       parlay_confidence: parlayBest.confidence,
       is_parlay_pick: false,
       updated_at: new Date().toISOString(),
+      algorithm_version: 'consensus-v1',
     });
   }
   return picks;
@@ -354,10 +388,11 @@ export default async function handler(req, res) {
     }
 
     let allPicks = [];
+    const snapshotRows = [];
     for (const [label, keys] of Object.entries(SPORT_KEYS)) {
       const keyList = Array.isArray(keys) ? keys : [keys];
       for (const key of keyList) {
-        const picks = await fetchSportOdds(label, key);
+        const picks = await fetchSportOdds(label, key, snapshotRows);
         allPicks = allPicks.concat(picks);
       }
     }
@@ -404,8 +439,26 @@ export default async function handler(req, res) {
     // fabricate a timestamp or count. books_max is the highest number of
     // sportsbooks seen backing any single game's line, not a fixed total.
     const booksMax = allPicks.reduce((m, p) => Math.max(m, p.books_counted || 0), 0);
-    await supabase.from('fetch_log').insert({ games_processed: allPicks.length, books_max: booksMax });
-    res.status(200).json({ inserted: allPicks.length, parlayPicks: parlayPickCount });
+    const { data: logRow } = await supabase
+      .from('fetch_log')
+      .insert({ games_processed: allPicks.length, books_max: booksMax })
+      .select('id')
+      .single();
+
+    // Preserve the raw multi-book quotes this run was built from — the
+    // prerequisite for ever reproducing a past pick exactly. Chunked to
+    // stay well under any single-request size limit.
+    if (logRow?.id && snapshotRows.length) {
+      const taggedRows = snapshotRows.map(r => ({ ...r, fetch_run_id: logRow.id }));
+      const CHUNK = 500;
+      for (let i = 0; i < taggedRows.length; i += CHUNK) {
+        const chunk = taggedRows.slice(i, i + CHUNK);
+        const { error: snapErr } = await supabase.from('market_snapshots').insert(chunk);
+        if (snapErr) console.error('Snapshot insert failed:', snapErr.message);
+      }
+    }
+
+    res.status(200).json({ inserted: allPicks.length, parlayPicks: parlayPickCount, snapshotRows: snapshotRows.length });
   } catch (err) {
     console.error(err);
     await sendAlert('fetch-picks cron failed', err.message || String(err));
