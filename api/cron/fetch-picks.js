@@ -195,15 +195,20 @@ const MIN_BOOKS_PER_LINE = 2;
 // was previously discarding 12-29% of book coverage for no good reason.
 function bestLineCandidate(entries, sideName, matchA, matchB, nameA, nameB) {
   const groups = groupByPoint(entries, sideName);
-  let best = null;
+  let best = null, bestOther = null;
   for (const [, lineEntries] of groups) {
     const c = consensusTwoWay(lineEntries, matchA, matchB);
     if (!c || c.books < MIN_BOOKS_PER_LINE) continue;
     const s = buildSide(c, c.probA >= c.probB, nameA, nameB);
     const score = s.confidence + (s.value != null ? s.value * 100 : 0);
-    if (!best || score > best.score) best = { ...s, score };
+    if (!best || score > best.score) {
+      best = { ...s, score };
+      // The other side of this same line — not eliminated, just not the
+      // one used for the live pick. Analysis-only.
+      bestOther = buildSide(c, !(c.probA >= c.probB), nameA, nameB);
+    }
   }
-  return best;
+  return best ? { primary: best, other: bestOther } : null;
 }
 
 // Sample standard deviation of per-book fair probabilities — how much the
@@ -244,35 +249,54 @@ const GATE_MIN_EDGE_PP = 2.0;
 const GATE_MIN_BOOKS = 4;
 const GATE_MAX_STD_DEV = 0.03; // 3 probability points
 
+// Core math for one side of a market, given its own probability and its
+// own best price. Used for whichever side is "favored" AND for the side
+// that isn't — raw probability never excludes a side before this runs.
+function makeSide(trueProb, best, name, books, consensusStdDev) {
+  const value = trueProb - americanToProb(best.price);
+  const valueEdgePp = Math.round(value * 1000) / 10;
+  const gateEdgePass = valueEdgePp >= GATE_MIN_EDGE_PP;
+  const gateBooksPass = books >= GATE_MIN_BOOKS;
+  const gateAgreementPass = consensusStdDev != null && consensusStdDev <= GATE_MAX_STD_DEV;
+  return {
+    name, price: best.price, point: best.point, book: best.book,
+    confidence: Math.round(trueProb * 100),
+    value, books, consensusStdDev,
+    gateEdgePass, gateBooksPass, gateAgreementPass,
+    gatePass: gateEdgePass && gateBooksPass && gateAgreementPass,
+  };
+}
+
 // Given a consensus result, build the candidate for whichever side the
-// market favors, priced at the best book available.
+// market favors, priced at the best book available. Live selection still
+// uses this — production behavior is unchanged by this fix.
 function buildSide(c, favorA, nameA, nameB) {
   const useA = favorA;
   const best = useA ? c.bestA : c.bestB;
   const trueProb = useA ? c.probA : c.probB;
-  const value = trueProb - americanToProb(best.price);
-  const valueEdgePp = Math.round(value * 1000) / 10;
-  const consensusStdDev = useA ? c.stdDevA : c.stdDevB;
+  const stdDevSide = useA ? c.stdDevA : c.stdDevB;
+  return makeSide(trueProb, best, useA ? nameA : nameB, c.books, stdDevSide);
+}
 
-  const gateEdgePass = valueEdgePp >= GATE_MIN_EDGE_PP;
-  const gateBooksPass = c.books >= GATE_MIN_BOOKS;
-  const gateAgreementPass = consensusStdDev != null && consensusStdDev <= GATE_MAX_STD_DEV;
+// Both sides of a two-way market as fully independent candidates. Neither
+// side is eliminated by raw win probability before its own Value Edge is
+// computed — this is what the favorite-only bug audit (Sept 2026) found
+// missing. Analysis-only: does not feed the live selection.
+function bothSides(c, nameA, nameB) {
+  return [
+    makeSide(c.probA, c.bestA, nameA, c.books, c.stdDevA),
+    makeSide(c.probB, c.bestB, nameB, c.books, c.stdDevB),
+  ];
+}
 
-  return {
-    name: useA ? nameA : nameB,
-    price: best.price,
-    point: best.point,
-    book: best.book,
-    confidence: Math.round(trueProb * 100),
-    // Positive edge = the best price pays more than consensus says it should.
-    value,
-    books: c.books,
-    consensusStdDev,
-    gateEdgePass,
-    gateBooksPass,
-    gateAgreementPass,
-    gatePass: gateEdgePass && gateBooksPass && gateAgreementPass,
-  };
+// All three soccer moneyline outcomes as independent candidates, using
+// the corrected 3-way de-vig. Analysis-only, same as bothSides.
+function threeWaySidesAll(c, homeTeam, awayTeam) {
+  return [
+    makeSide(c.probA, c.bestA, homeTeam, c.books, c.stdDevA),
+    makeSide(c.probDraw, c.bestDraw, 'Draw', c.books, c.stdDevDraw),
+    makeSide(c.probB, c.bestB, awayTeam, c.books, c.stdDevB),
+  ];
 }
 
 // Take whichever side is better priced relative to consensus — this can be
@@ -306,8 +330,8 @@ function devigThreeWay(priceHome, priceDraw, priceAway) {
 // their probabilities now correctly account for Draw's share instead of
 // ignoring it.
 function consensusThreeWay(entries, homeTeam, awayTeam) {
-  const homeProbs = [], awayProbs = [];
-  let bestHome = null, bestAway = null;
+  const homeProbs = [], awayProbs = [], drawProbs = [];
+  let bestHome = null, bestAway = null, bestDraw = null;
   for (const entry of entries) {
     const oh = entry.outcomes.find(o => o.name === homeTeam);
     const od = entry.outcomes.find(o => o.name === 'Draw');
@@ -317,16 +341,18 @@ function consensusThreeWay(entries, homeTeam, awayTeam) {
     if (!dv) continue;
     homeProbs.push(dv.home);
     awayProbs.push(dv.away);
+    drawProbs.push(dv.draw);
     if (!bestHome || oh.price > bestHome.price) bestHome = { price: oh.price, book: entry.book, point: null };
     if (!bestAway || oa.price > bestAway.price) bestAway = { price: oa.price, book: entry.book, point: null };
+    if (!bestDraw || od.price > bestDraw.price) bestDraw = { price: od.price, book: entry.book, point: null };
   }
   if (!homeProbs.length) return null;
   const avg = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
   return {
-    probA: avg(homeProbs), probB: avg(awayProbs),
-    bestA: bestHome, bestB: bestAway,
+    probA: avg(homeProbs), probB: avg(awayProbs), probDraw: avg(drawProbs),
+    bestA: bestHome, bestB: bestAway, bestDraw,
     books: homeProbs.length,
-    stdDevA: stdDev(homeProbs), stdDevB: stdDev(awayProbs),
+    stdDevA: stdDev(homeProbs), stdDevB: stdDev(awayProbs), stdDevDraw: stdDev(drawProbs),
   };
 }
 
@@ -371,6 +397,7 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     // --- Moneyline candidate (de-vigged consensus across books) ---
     let mlConfidence = 0, mlPickStr = null, mlOdds = null, mlTeam = null;
     let mlValue = null, mlBook = null, mlBooks = null, mlGates = null;
+    let mlOtherSides = []; // every side not used for the live pick — analysis only
     if (h2hSb.length) {
       // Soccer's moneyline is a real 3-way market (Home/Draw/Away) — a
       // plain 2-way de-vig ignores Draw entirely and inflates both sides.
@@ -383,19 +410,27 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
         mlValue = s.value; mlBook = s.book; mlBooks = s.books;
         mlGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass };
         mlPickStr = `${mlTeam} ML`;
+
+        const allSides = sportLabel === 'Soccer'
+          ? threeWaySidesAll(c, game.home_team, game.away_team)
+          : bothSides(c, game.home_team, game.away_team);
+        mlOtherSides = allSides.filter(side => side.name !== s.name);
       }
     }
 
     // --- Spread candidate ---
     let spreadConfidence = 0, spreadPickStr = null, spreadOdds = null, spreadTeam = null, spreadPoint = null;
     let spreadValue = null, spreadBook = null, spreadBooks = null, spreadGates = null;
+    let spreadOtherSide = null; // the other side of the same line — analysis only
     if (spreadEntriesAllSb.length) {
-      const s = bestLineCandidate(spreadEntriesAllSb, game.home_team, o => o.name === game.home_team, o => o.name === game.away_team, game.home_team, game.away_team);
+      const result = bestLineCandidate(spreadEntriesAllSb, game.home_team, o => o.name === game.home_team, o => o.name === game.away_team, game.home_team, game.away_team);
+      const s = result?.primary;
       if (s) {
         spreadTeam = s.name; spreadOdds = s.price; spreadPoint = s.point;
         spreadConfidence = s.confidence; spreadValue = s.value; spreadBook = s.book; spreadBooks = s.books;
         spreadGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass };
         spreadPickStr = `${spreadTeam} ${spreadPoint > 0 ? '+' : ''}${spreadPoint}`;
+        spreadOtherSide = result.other;
       }
     }
 
@@ -403,8 +438,9 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     let totalConfidence = 0, totalPickStr = null, totalOdds = null, totalDirection = null, totalPoint = null;
     let totalValue = null, totalBook = null, totalBooks = null, totalGates = null;
     if (totalEntriesAllSb.length) {
-      const s = bestLineCandidate(totalEntriesAllSb, 'Over', o => o.name === 'Over', o => o.name === 'Under', 'Over', 'Under');
-      if (s) {
+      const totalResult = bestLineCandidate(totalEntriesAllSb, 'Over', o => o.name === 'Over', o => o.name === 'Under', 'Over', 'Under');
+      if (totalResult) {
+        const s = totalResult.primary;
         totalDirection = s.name; totalOdds = s.price; totalPoint = s.point;
         totalConfidence = s.confidence; totalValue = s.value; totalBook = s.book; totalBooks = s.books;
         totalGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass };
@@ -467,6 +503,42 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
       gate_pass: c.gates?.pass ?? null,
     }));
 
+    // The side(s) NOT used for the live pick — favorite-only bug audit
+    // (Sept 2026) found these were never even computed before. Recorded
+    // for analysis; selected is always false and selection_score is null
+    // since these never competed in the cross-market scoring above.
+    const otherSideRecords = [];
+    for (const side of mlOtherSides) {
+      otherSideRecords.push({
+        market_type: 'Moneyline', selected: false,
+        confidence: side.confidence,
+        value_edge: side.value != null ? Math.round(side.value * 1000) / 10 : null,
+        odds: side.price, team: side.name, point: side.point, direction: null, book: side.book,
+        books_counted: side.books,
+        summary: side.name === 'Draw' ? 'Draw' : `${side.name} ML`,
+        selection_score: null,
+        consensus_std_dev: side.consensusStdDev != null ? Math.round(side.consensusStdDev * 10000) / 10000 : null,
+        gate_edge_pass: side.gateEdgePass, gate_books_pass: side.gateBooksPass,
+        gate_agreement_pass: side.gateAgreementPass, gate_pass: side.gatePass,
+      });
+    }
+    if (spreadOtherSide) {
+      const side = spreadOtherSide;
+      otherSideRecords.push({
+        market_type: 'Spread', selected: false,
+        confidence: side.confidence,
+        value_edge: side.value != null ? Math.round(side.value * 1000) / 10 : null,
+        odds: side.price, team: side.name, point: side.point, direction: null, book: side.book,
+        books_counted: side.books,
+        summary: `${side.name} ${side.point > 0 ? '+' : ''}${side.point}`,
+        selection_score: null,
+        consensus_std_dev: side.consensusStdDev != null ? Math.round(side.consensusStdDev * 10000) / 10000 : null,
+        gate_edge_pass: side.gateEdgePass, gate_books_pass: side.gateBooksPass,
+        gate_agreement_pass: side.gateAgreementPass, gate_pass: side.gatePass,
+      });
+    }
+    candidateRecords.push(...otherSideRecords);
+
     const parlayCandidates = candidates.filter(c => c.odds == null || c.odds > MAX_PARLAY_ODDS);
     const parlayBest = (parlayCandidates.length ? parlayCandidates : candidates)
       .reduce((a, b) => (b.confidence > a.confidence ? b : a));
@@ -526,7 +598,11 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
       parlay_confidence: parlayBest.confidence,
       is_parlay_pick: false,
       updated_at: new Date().toISOString(),
-      algorithm_version: 'consensus-v1',
+      // Bumped to mark the favorite-only candidate-generation fix (Sept
+      // 2026) — both sides of ML/Spread are now recorded, not just the
+      // favored one. Rows tagged consensus-v1 predate this and should be
+      // treated as legacy when calibrating Best Call v1 thresholds.
+      algorithm_version: 'consensus-v1.1',
       _candidateRecords: candidateRecords, // transient — stripped before the daily_picks upsert
     });
   }
