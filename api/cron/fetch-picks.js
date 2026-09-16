@@ -160,6 +160,16 @@ function filterToModalPoint(entries, sideName) {
   return entries.filter(e => e.outcomes.find(x => x.name === sideName)?.point === modal);
 }
 
+// Sample standard deviation of per-book fair probabilities — how much the
+// contributing books actually agree. Undefined (null) with fewer than 2
+// books; you can't measure agreement from a single source.
+function stdDev(arr) {
+  if (arr.length < 2) return null;
+  const mean = arr.reduce((s, v) => s + v, 0) / arr.length;
+  const variance = arr.reduce((s, v) => s + (v - mean) ** 2, 0) / (arr.length - 1);
+  return Math.sqrt(variance);
+}
+
 // De-vig each book, average into a consensus, and track which book is
 // offering the best price on each side. Higher American odds are always
 // better for the bettor, so a plain numeric max works here.
@@ -179,8 +189,14 @@ function consensusTwoWay(entries, matchA, matchB) {
   }
   if (!probsA.length) return null;
   const avg = arr => arr.reduce((s, v) => s + v, 0) / arr.length;
-  return { probA: avg(probsA), probB: avg(probsB), bestA, bestB, books: probsA.length };
+  return { probA: avg(probsA), probB: avg(probsB), bestA, bestB, books: probsA.length, stdDevA: stdDev(probsA), stdDevB: stdDev(probsB) };
 }
+
+// Testing thresholds only — hypotheses to validate against real graded
+// results, not claims that these specific numbers are correct.
+const GATE_MIN_EDGE_PP = 2.0;
+const GATE_MIN_BOOKS = 4;
+const GATE_MAX_STD_DEV = 0.03; // 3 probability points
 
 // Given a consensus result, build the candidate for whichever side the
 // market favors, priced at the best book available.
@@ -188,6 +204,14 @@ function buildSide(c, favorA, nameA, nameB) {
   const useA = favorA;
   const best = useA ? c.bestA : c.bestB;
   const trueProb = useA ? c.probA : c.probB;
+  const value = trueProb - americanToProb(best.price);
+  const valueEdgePp = Math.round(value * 1000) / 10;
+  const consensusStdDev = useA ? c.stdDevA : c.stdDevB;
+
+  const gateEdgePass = valueEdgePp >= GATE_MIN_EDGE_PP;
+  const gateBooksPass = c.books >= GATE_MIN_BOOKS;
+  const gateAgreementPass = consensusStdDev != null && consensusStdDev <= GATE_MAX_STD_DEV;
+
   return {
     name: useA ? nameA : nameB,
     price: best.price,
@@ -195,8 +219,13 @@ function buildSide(c, favorA, nameA, nameB) {
     book: best.book,
     confidence: Math.round(trueProb * 100),
     // Positive edge = the best price pays more than consensus says it should.
-    value: trueProb - americanToProb(best.price),
+    value,
     books: c.books,
+    consensusStdDev,
+    gateEdgePass,
+    gateBooksPass,
+    gateAgreementPass,
+    gatePass: gateEdgePass && gateBooksPass && gateAgreementPass,
   };
 }
 
@@ -242,20 +271,21 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
 
     // --- Moneyline candidate (de-vigged consensus across books) ---
     let mlConfidence = 0, mlPickStr = null, mlOdds = null, mlTeam = null;
-    let mlValue = null, mlBook = null, mlBooks = null;
+    let mlValue = null, mlBook = null, mlBooks = null, mlGates = null;
     if (h2hEntries.length) {
       const c = consensusTwoWay(h2hEntries, o => o.name === game.home_team, o => o.name === game.away_team);
       if (c) {
         const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team);
         mlTeam = s.name; mlOdds = s.price; mlConfidence = s.confidence;
         mlValue = s.value; mlBook = s.book; mlBooks = s.books;
+        mlGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass };
         mlPickStr = `${mlTeam} ML`;
       }
     }
 
     // --- Spread candidate ---
     let spreadConfidence = 0, spreadPickStr = null, spreadOdds = null, spreadTeam = null, spreadPoint = null;
-    let spreadValue = null, spreadBook = null, spreadBooks = null;
+    let spreadValue = null, spreadBook = null, spreadBooks = null, spreadGates = null;
     if (spreadEntriesAll.length) {
       const entries = filterToModalPoint(spreadEntriesAll, game.home_team);
       const c = entries.length ? consensusTwoWay(entries, o => o.name === game.home_team, o => o.name === game.away_team) : null;
@@ -263,13 +293,14 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
         const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team);
         spreadTeam = s.name; spreadOdds = s.price; spreadPoint = s.point;
         spreadConfidence = s.confidence; spreadValue = s.value; spreadBook = s.book; spreadBooks = s.books;
+        spreadGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass };
         spreadPickStr = `${spreadTeam} ${spreadPoint > 0 ? '+' : ''}${spreadPoint}`;
       }
     }
 
     // --- Total candidate ---
     let totalConfidence = 0, totalPickStr = null, totalOdds = null, totalDirection = null, totalPoint = null;
-    let totalValue = null, totalBook = null, totalBooks = null;
+    let totalValue = null, totalBook = null, totalBooks = null, totalGates = null;
     if (totalEntriesAll.length) {
       const entries = filterToModalPoint(totalEntriesAll, 'Over');
       const c = entries.length ? consensusTwoWay(entries, o => o.name === 'Over', o => o.name === 'Under') : null;
@@ -277,6 +308,7 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
         const s = buildSide(c, c.probA >= c.probB, 'Over', 'Under');
         totalDirection = s.name; totalOdds = s.price; totalPoint = s.point;
         totalConfidence = s.confidence; totalValue = s.value; totalBook = s.book; totalBooks = s.books;
+        totalGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass };
         totalPickStr = `${totalDirection} ${totalPoint}`;
       }
     }
@@ -295,9 +327,9 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     // is genuinely maximizing the odds all three legs land.
     const ML_PRICE_PENALTY = 5;
     const candidates = [
-      { type: 'Moneyline', confidence: mlConfidence, summary: mlPickStr, odds: mlOdds, team: mlTeam, point: null, direction: null, value: mlValue, book: mlBook, books: mlBooks },
-      { type: 'Spread', confidence: spreadConfidence, summary: spreadPickStr, odds: spreadOdds, team: spreadTeam, point: spreadPoint, direction: null, value: spreadValue, book: spreadBook, books: spreadBooks },
-      { type: 'Total', confidence: totalConfidence, summary: totalPickStr, odds: totalOdds, team: null, point: totalPoint, direction: totalDirection, value: totalValue, book: totalBook, books: totalBooks },
+      { type: 'Moneyline', confidence: mlConfidence, summary: mlPickStr, odds: mlOdds, team: mlTeam, point: null, direction: null, value: mlValue, book: mlBook, books: mlBooks, gates: mlGates },
+      { type: 'Spread', confidence: spreadConfidence, summary: spreadPickStr, odds: spreadOdds, team: spreadTeam, point: spreadPoint, direction: null, value: spreadValue, book: spreadBook, books: spreadBooks, gates: spreadGates },
+      { type: 'Total', confidence: totalConfidence, summary: totalPickStr, odds: totalOdds, team: null, point: totalPoint, direction: totalDirection, value: totalValue, book: totalBook, books: totalBooks, gates: totalGates },
     ].filter(c => c.summary);
     if (candidates.length === 0) continue; // no usable market at all — nothing to show for this game
 
@@ -329,6 +361,11 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
       books_counted: c.books,
       summary: c.summary,
       selection_score: Math.round(selectionScore(c) * 100) / 100,
+      consensus_std_dev: c.gates?.stdDev != null ? Math.round(c.gates.stdDev * 10000) / 10000 : null,
+      gate_edge_pass: c.gates?.edgePass ?? null,
+      gate_books_pass: c.gates?.booksPass ?? null,
+      gate_agreement_pass: c.gates?.agreementPass ?? null,
+      gate_pass: c.gates?.pass ?? null,
     }));
 
     const parlayCandidates = candidates.filter(c => c.odds == null || c.odds > MAX_PARLAY_ODDS);
