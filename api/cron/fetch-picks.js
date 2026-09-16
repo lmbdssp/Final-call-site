@@ -172,19 +172,38 @@ function devigPair(priceA, priceB) {
   return { a: a / sum, b: b / sum };
 }
 
-// Books hang different numbers on the same game (-3 vs -3.5). Averaging
-// across them would be meaningless, so keep only the most common line.
-function filterToModalPoint(entries, sideName) {
-  const counts = new Map();
+// Group entries by their actual line, so Over 8 and Over 8.5 are never
+// averaged together — they're genuinely different propositions.
+function groupByPoint(entries, sideName) {
+  const groups = new Map();
   for (const e of entries) {
     const o = e.outcomes.find(x => x.name === sideName);
     if (o?.point == null) continue;
-    counts.set(o.point, (counts.get(o.point) || 0) + 1);
+    if (!groups.has(o.point)) groups.set(o.point, []);
+    groups.get(o.point).push(e);
   }
-  if (!counts.size) return [];
-  let modal = null, most = -1;
-  for (const [pt, n] of counts) if (n > most) { most = n; modal = pt; }
-  return entries.filter(e => e.outcomes.find(x => x.name === sideName)?.point === modal);
+  return groups;
+}
+
+// Testing threshold — a line needs at least this many sportsbooks quoting
+// both sides before its consensus is trusted enough to be a candidate.
+const MIN_BOOKS_PER_LINE = 2;
+
+// Evaluate EVERY distinct line independently (Over 8, Over 8.5, Over 9...)
+// instead of collapsing to whichever line happens to be most common. The
+// most-quoted line isn't necessarily the one with the best value — this
+// was previously discarding 12-29% of book coverage for no good reason.
+function bestLineCandidate(entries, sideName, matchA, matchB, nameA, nameB) {
+  const groups = groupByPoint(entries, sideName);
+  let best = null;
+  for (const [, lineEntries] of groups) {
+    const c = consensusTwoWay(lineEntries, matchA, matchB);
+    if (!c || c.books < MIN_BOOKS_PER_LINE) continue;
+    const s = buildSide(c, c.probA >= c.probB, nameA, nameB);
+    const score = s.confidence + (s.value != null ? s.value * 100 : 0);
+    if (!best || score > best.score) best = { ...s, score };
+  }
+  return best;
 }
 
 // Sample standard deviation of per-book fair probabilities — how much the
@@ -321,10 +340,8 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     let spreadConfidence = 0, spreadPickStr = null, spreadOdds = null, spreadTeam = null, spreadPoint = null;
     let spreadValue = null, spreadBook = null, spreadBooks = null, spreadGates = null;
     if (spreadEntriesAllSb.length) {
-      const entries = filterToModalPoint(spreadEntriesAllSb, game.home_team);
-      const c = entries.length ? consensusTwoWay(entries, o => o.name === game.home_team, o => o.name === game.away_team) : null;
-      if (c) {
-        const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team);
+      const s = bestLineCandidate(spreadEntriesAllSb, game.home_team, o => o.name === game.home_team, o => o.name === game.away_team, game.home_team, game.away_team);
+      if (s) {
         spreadTeam = s.name; spreadOdds = s.price; spreadPoint = s.point;
         spreadConfidence = s.confidence; spreadValue = s.value; spreadBook = s.book; spreadBooks = s.books;
         spreadGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass };
@@ -336,10 +353,8 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows) {
     let totalConfidence = 0, totalPickStr = null, totalOdds = null, totalDirection = null, totalPoint = null;
     let totalValue = null, totalBook = null, totalBooks = null, totalGates = null;
     if (totalEntriesAllSb.length) {
-      const entries = filterToModalPoint(totalEntriesAllSb, 'Over');
-      const c = entries.length ? consensusTwoWay(entries, o => o.name === 'Over', o => o.name === 'Under') : null;
-      if (c) {
-        const s = buildSide(c, c.probA >= c.probB, 'Over', 'Under');
+      const s = bestLineCandidate(totalEntriesAllSb, 'Over', o => o.name === 'Over', o => o.name === 'Under', 'Over', 'Under');
+      if (s) {
         totalDirection = s.name; totalOdds = s.price; totalPoint = s.point;
         totalConfidence = s.confidence; totalValue = s.value; totalBook = s.book; totalBooks = s.books;
         totalGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass };
