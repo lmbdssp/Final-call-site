@@ -7,8 +7,19 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
 
-  const { email } = req.body || {};
-  if (!email) return res.status(400).json({ error: 'Missing email' });
+  // Identity comes ONLY from a verified Supabase session token — never
+  // from a client-supplied field. This is the fix for the confirmed
+  // vulnerability where any caller could pass any email and receive
+  // that person's real Stripe Billing Portal link.
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Sign in required' });
+
+  const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+  if (userErr || !userData?.user?.email) {
+    return res.status(401).json({ error: 'Sign in required' });
+  }
+  const email = userData.user.email;
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
   const { data: allowed } = await supabase.rpc('check_rate_limit', { p_key: `portal:${ip}`, p_max_count: 5, p_window_seconds: 60 });
