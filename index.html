@@ -414,8 +414,9 @@ let currentSport = 'NFL';
 let isSubscribed = false;
 const sportRow = document.getElementById('sportRow');
 async function getSportsWithGames(){
-  const { data } = await sb.from('daily_picks').select('sport').eq('game_date', todayStr);
-  return new Set((data || []).map(r => r.sport));
+  const res = await fetch('/api/games?type=sports');
+  const data = await res.json();
+  return new Set(data.sports || []);
 }
 (async function initSportTabs(){
   const sportsWithGames = await getSportsWithGames();
@@ -441,14 +442,15 @@ function selectSport(key){
 function marketBox(label, pick, odds, isBest, confidence, locked, edge, book){
   const oddsStr = odds == null ? '' : (odds > 0 ? `+${odds}` : `${odds}`);
   const showBest = isBest && !locked;
-  // Only surface edge when it's genuinely positive — this is a real,
-  // computed number (best price vs. de-vigged consensus), not a model score.
   const edgeLine = showBest && edge != null && edge > 0
     ? `<div class="gm-edge">+${edge}% value${book ? ` at ${book}` : ''}</div>`
     : '';
+  // When locked, the pick/odds fields are genuinely absent from the API
+  // response (not just hidden) — show "Locked" rather than a blank dash.
+  const pickText = pick || (locked ? 'Locked' : '—');
   return `<div class="gc-market${showBest ? ' best' : ''}">
     <div class="gm-label">${label}</div>
-    <div class="gm-pick">${pick || '—'}</div>
+    <div class="gm-pick">${pickText}</div>
     ${oddsStr ? `<div class="gm-odds">${oddsStr}</div>` : ''}
     ${showBest ? `<div class="gc-best-badge">Final Call${confidence != null ? ` • ${confidence}%` : ''}</div>` : ''}
     ${edgeLine}
@@ -458,58 +460,35 @@ function marketBox(label, pick, odds, isBest, confidence, locked, edge, book){
 async function loadGamesForSport(sport){
   const list = document.getElementById('gamesList');
   list.innerHTML = '<div class="games-empty">Loading today\'s games…</div>';
-  const { data, error } = await sb
-    .from('daily_picks')
-    .select('sport,league,away_team,home_team,commence_time,ml_pick,ml_odds,spread_pick,spread_odds,total_pick,total_odds,best_pick_type,prop_pick,confidence,value_edge,best_book')
-    .eq('game_date', todayStr)
-    .eq('sport', sport)
-    .order('commence_time', { ascending: true });
 
-  if(error || !data || data.length === 0){
-    const { data: log } = await sb.from('fetch_log').select('ran_at').order('ran_at', { ascending: false }).limit(1).maybeSingle();
-    const lastUpdate = log ? new Date(log.ran_at).toLocaleTimeString([], {hour:'numeric', minute:'2-digit', timeZoneName:'short'}) : null;
-    list.innerHTML = lastUpdate
-      ? `<div class="games-empty">Today's Final Calls are loading — we're waiting for today's market data to finish updating.<br><br>Last update: ${lastUpdate} · Next refresh: automatic</div>`
-      : `<div class="games-empty">No games logged for today yet. Check back shortly — this updates automatically each morning.</div>`;
+  const { data: { session } } = await sb.auth.getSession();
+  const headers = session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {};
+  const res = await fetch(`/api/games?sport=${encodeURIComponent(sport)}`, { headers });
+  const result = await res.json();
+
+  if(!res.ok || !result.games || result.games.length === 0){
+    list.innerHTML = `<div class="games-empty">No games logged for today yet. Check back shortly — this updates automatically each morning.</div>`;
     return;
   }
 
-  // High-volume sports bury the useful picks — college football runs 80+ games
-  // on a Saturday and soccer spans several competitions daily. Cap those, show
-  // everything for the rest. Tune the numbers here; no other changes needed.
-  const MAX_GAMES_PER_SPORT = { NCAAF: 5, Soccer: 8 };
-  const cap = MAX_GAMES_PER_SPORT[sport];
-  let rows = data;
-  let trimmedNote = '';
-  if (cap && data.length > cap) {
-    // Rank by value edge — how far the best available price beats the
-    // de-vigged consensus — rather than by raw confidence. Confidence just
-    // surfaces the biggest favorites, which is where our returns are weakest.
-    // Falls back to confidence on older rows written before edge was tracked.
-    const anyEdge = data.some(g => g.value_edge != null);
-    const rank = g => anyEdge ? (g.value_edge ?? -999) : (g.confidence || 0);
-    rows = [...data]
-      .sort((a, b) => rank(b) - rank(a))
-      .slice(0, cap)
-      .sort((a, b) => new Date(a.commence_time) - new Date(b.commence_time));
-    trimmedNote = `<div class="games-empty" style="text-align:left; padding:0 0 4px;">Showing our ${cap} best-value calls from ${data.length} games today.</div>`;
-  }
+  const rows = result.games;
+  const trimmedNote = result.trimmed
+    ? `<div class="games-empty" style="text-align:left; padding:0 0 4px;">Showing our ${result.cap} best-value calls from ${result.totalBeforeTrim} games today.</div>`
+    : '';
 
-  list.innerHTML = trimmedNote + rows.map((g, i)=>{
+  list.innerHTML = trimmedNote + rows.map((g)=>{
     const timeStr = g.commence_time ? new Date(g.commence_time).toLocaleTimeString([], {hour:'numeric', minute:'2-digit', timeZoneName:'short'}) : '';
-    const pickLocked = !isSubscribed && i > 0;
-    const markets = marketBox('Moneyline', g.ml_pick, g.ml_odds, g.best_pick_type === 'Moneyline', g.confidence, pickLocked, g.value_edge, g.best_book)
-      + marketBox('Spread', g.spread_pick, g.spread_odds, g.best_pick_type === 'Spread', g.confidence, pickLocked, g.value_edge, g.best_book)
-      + marketBox('Total', g.total_pick, g.total_odds, g.best_pick_type === 'Total', g.confidence, pickLocked, g.value_edge, g.best_book);
-    const finalCallLine = pickLocked
+    const markets = marketBox('Moneyline', g.ml_pick, g.ml_odds, g.best_pick_type === 'Moneyline', g.confidence, g.locked, g.value_edge, g.best_book)
+      + marketBox('Spread', g.spread_pick, g.spread_odds, g.best_pick_type === 'Spread', g.confidence, g.locked, g.value_edge, g.best_book)
+      + marketBox('Total', g.total_pick, g.total_odds, g.best_pick_type === 'Total', g.confidence, g.locked, g.value_edge, g.best_book);
+    const finalCallLine = g.locked
       ? `<div class="gc-locked-line"><b>Final Call:</b> locked — <a href="#" class="prop-unlock-link">go Pro</a> to see our projection</div>`
       : '';
     const leagueTag = g.league ? `<div class="gc-league">${g.league}</div>` : '';
-    const hasProps = sport !== 'Soccer' && sport !== 'MLB' && sport !== 'NCAAF';
-    const propLine = isSubscribed
+    const propLine = !g.has_props ? '' : (result.isSubscribed
       ? (g.prop_pick ? `<b>Prop projection:</b> ${g.prop_pick}` : 'No prop projection posted for this game yet.')
-      : `<b>Prop projection:</b> locked — <a href="#" class="prop-unlock-link">go Pro</a> to see it`;
-    const propSection = hasProps ? `<div class="gc-prop">${propLine}</div>` : '';
+      : `<b>Prop projection:</b> locked — <a href="#" class="prop-unlock-link">go Pro</a> to see it`);
+    const propSection = g.has_props ? `<div class="gc-prop">${propLine}</div>` : '';
     return `<div class="game-card">
     ${leagueTag}
 
@@ -519,14 +498,13 @@ async function loadGamesForSport(sport){
       ${propSection}
     </div>`;
   }).join('');
-  void rows;
 
   list.querySelectorAll('.prop-unlock-link').forEach(a=>a.addEventListener('click', (e)=>{
     e.preventDefault();
     if(!currentUser){ goToSignIn(); } else { openModal(); }
   }));
 
-  document.getElementById('signinNudge').classList.toggle('hidden', isSubscribed);
+  document.getElementById('signinNudge').classList.toggle('hidden', result.isSubscribed);
   const nudgeLink = document.getElementById('signinNudgeLink');
   nudgeLink.textContent = currentUser ? 'Go Pro to see every game\'s Final Call →' : 'Sign in to see every game\'s Final Call →';
   nudgeLink.onclick = (e)=>{ e.preventDefault(); if(!currentUser){ goToSignIn(); } else { openModal(); } };
@@ -549,13 +527,11 @@ if (dateStr >= todayCutoff) {
 
   const list = document.getElementById('resultsList');
   list.innerHTML = '<div class="results-empty">Loading…</div>';
-  const { data, error } = await sb
-    .from('daily_picks')
-    .select('sport,away_team,home_team,predicted_away_score,predicted_home_score,actual_away_score,actual_home_score,graded,correct,prop_pick')
-    .eq('game_date', dateStr)
-    .order('created_at', { ascending: true });
+  const res = await fetch(`/api/games?type=results&date=${encodeURIComponent(dateStr)}`);
+  const result = await res.json();
+  const data = result.results;
 
-  if(error || !data || data.length === 0){
+  if(!res.ok || !data || data.length === 0){
     list.innerHTML = '<div class="results-empty">No games logged for this date yet.</div>';
     return;
   }
@@ -591,41 +567,35 @@ function combineParlayOdds(oddsArray){
 }
 
 async function loadParlay(){
-  const { data } = await sb
-    .from('daily_picks')
-    .select('sport,away_team,home_team,parlay_pick_summary,parlay_odds,parlay_confidence')
-    .eq('game_date', todayStr)
-    .eq('is_parlay_pick', true)
-    .order('parlay_confidence', { ascending: false })
-    .limit(3);
+  const { data: { session } } = await sb.auth.getSession();
+  const headers = session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {};
+  const res = await fetch('/api/games?type=parlay', { headers });
+  const result = await res.json();
 
   const unlockedEl = document.getElementById('parlayUnlocked');
   const lockWrap = document.getElementById('parlayLockWrap');
 
-  const combined = data ? combineParlayOdds(data.map(p => p.parlay_odds)) : null;
-  document.getElementById('parlaySub').textContent = combined ? `Bundled together • ${combined}` : 'Bundled together';
-
-  let subscribed = false;
-  if(currentUser){
-    const { data: sub } = await sb.from('subscriptions').select('status').eq('user_email', currentUser.email).maybeSingle();
-    subscribed = !!(sub && sub.status === 'active');
-  }
-
-  if(subscribed){
-    lockWrap.classList.add('hidden');
-    unlockedEl.classList.remove('hidden');
-    if(!data || data.length === 0){
-      unlockedEl.innerHTML = '<div class="parlay-pick">No Final Calls logged yet today.</div>';
-    } else {
-      unlockedEl.innerHTML = data.map(p=>{
-        const icon = (sports[p.sport] && sports[p.sport].icon) || '🎯';
-        return `<div class="parlay-pick"><span class="ball-icon">${icon}</span>${p.away_team} @ ${p.home_team} — ${p.parlay_pick_summary || 'TBD'}${p.parlay_confidence != null ? ` • ${p.parlay_confidence}%` : ''}</div>`;
-      }).join('');
-    }
-  } else {
+  if (result.locked) {
     unlockedEl.classList.add('hidden');
     lockWrap.classList.remove('hidden');
     document.getElementById('parlayLockMsg').textContent = currentUser ? 'Pro feature' : 'Sign in to unlock';
+    document.getElementById('parlaySub').textContent = 'Bundled together';
+    return;
+  }
+
+  const data = result.picks || [];
+  const combined = data.length ? combineParlayOdds(data.map(p => p.parlay_odds)) : null;
+  document.getElementById('parlaySub').textContent = combined ? `Bundled together • ${combined}` : 'Bundled together';
+
+  lockWrap.classList.add('hidden');
+  unlockedEl.classList.remove('hidden');
+  if (data.length === 0) {
+    unlockedEl.innerHTML = '<div class="parlay-pick">No Final Calls logged yet today.</div>';
+  } else {
+    unlockedEl.innerHTML = data.map(p=>{
+      const icon = (sports[p.sport] && sports[p.sport].icon) || '🎯';
+      return `<div class="parlay-pick"><span class="ball-icon">${icon}</span>${p.away_team} @ ${p.home_team} — ${p.parlay_pick_summary || 'TBD'}${p.parlay_confidence != null ? ` • ${p.parlay_confidence}%` : ''}</div>`;
+    }).join('');
   }
 }
 function goToSignIn(){
