@@ -908,7 +908,7 @@ export default async function handler(req, res) {
         const { error: shadowErr } = await supabase
           .from('shadow_candidates')
           .upsert(chunk, {
-            onConflict: 'fetch_run_id,sport,away_team,home_team,commence_time,market_type,selection,point',
+            onConflict: 'fetch_run_id,sport,away_team,home_team,commence_time,market_type,selection,point_key',
             ignoreDuplicates: true,
           });
         if (shadowErr) console.error('Shadow insert failed:', shadowErr.message);
