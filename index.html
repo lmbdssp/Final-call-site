@@ -333,10 +333,13 @@ document.getElementById('manageSubLink').addEventListener('click', async ()=>{
   const originalText = link.textContent;
   link.textContent = 'Loading…';
   try {
+    const { data: { session } } = await sb.auth.getSession();
     const res = await fetch('/api/create-portal-session', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: currentUser.email }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session?.access_token || ''}`,
+      },
     });
     const data = await res.json();
     if (data.url) { window.location.href = data.url; }
