@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { sendAlert } from '../lib/alert.js';
+import { sendAlert } from '../../lib/alert.js';
 
 // Isolated from the customer Track Record's LOGIC — never writes to
 // daily_picks/pick_candidates, and never reads pick-level fields

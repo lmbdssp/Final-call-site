@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { fetchWithRetry } from '../lib/fetchWithRetry.js';
-import { sendAlert } from '../lib/alert.js';
+import { fetchWithRetry } from '../../lib/fetchWithRetry.js';
+import { sendAlert } from '../../lib/alert.js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const ODDS_API_KEY = process.env.ODDS_API_KEY;

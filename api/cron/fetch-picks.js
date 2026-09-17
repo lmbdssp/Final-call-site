@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { fetchWithRetry } from '../lib/fetchWithRetry.js';
-import { sendAlert } from '../lib/alert.js';
+import { fetchWithRetry } from '../../lib/fetchWithRetry.js';
+import { sendAlert } from '../../lib/alert.js';
 
 // Picks a single, reliable source for the daily feed: The Odds API.
 // It returns real fixtures, real bookmaker lines, AND final scores

@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import { verifyUnsubscribeToken } from './lib/unsubscribeToken.js';
+import { verifyUnsubscribeToken } from '../lib/unsubscribeToken.js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
