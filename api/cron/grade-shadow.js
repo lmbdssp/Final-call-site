@@ -1,29 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
-import { fetchWithRetry } from '../lib/fetchWithRetry.js';
 import { sendAlert } from '../lib/alert.js';
 
-// Fully isolated from grade-picks.js and daily_picks/pick_candidates.
-// This file NEVER reads from or writes to the customer-facing Track
-// Record — it only reads/writes shadow_candidates. Makes its own
-// independent Odds API scores calls rather than sharing any data or
-// code path with the production grading job.
+// Isolated from the customer Track Record's LOGIC — never writes to
+// daily_picks/pick_candidates, and never reads pick-level fields
+// (confidence, correct, best_pick_type, odds, algorithm output). Reads
+// ONLY the literal completed-game score already fetched and stored by
+// grade-picks.js, to avoid a duplicate Odds API call. This is a
+// one-way, read-only borrow of a raw sports fact, not a dependency on
+// anything the Track Record computes or displays.
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-const ODDS_API_KEY = process.env.ODDS_API_KEY;
-
-const SPORT_KEYS = {
-  NFL: 'americanfootball_nfl',
-  NBA: 'basketball_nba',
-  MLB: 'baseball_mlb',
-  NHL: 'icehockey_nhl',
-  Soccer: [
-    'soccer_epl', 'soccer_uefa_champs_league', 'soccer_uefa_europa_league',
-    'soccer_uefa_europa_conference_league', 'soccer_spain_la_liga',
-    'soccer_italy_serie_a', 'soccer_france_ligue_one', 'soccer_germany_bundesliga',
-    'soccer_usa_mls',
-  ],
-  NCAAF: 'americanfootball_ncaaf',
-  NCAAB: 'basketball_ncaab',
-};
 
 function gradeShadowPick(marketType, selection, point, homeTeam, actualHome, actualAway) {
   const isDraw = actualHome === actualAway;
@@ -53,52 +38,46 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    // Give games a few hours after kickoff before expecting a final score.
-    const cutoff = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString();
     const { data: pending } = await supabase
       .from('shadow_candidates')
       .select('id, sport, away_team, home_team, commence_time, market_type, selection, point')
-      .is('result', null)
-      .lt('commence_time', cutoff);
+      .is('result', null);
 
     if (!pending || pending.length === 0) {
       return res.status(200).json({ graded: 0, note: 'Nothing pending' });
     }
 
-    const bySport = {};
-    for (const row of pending) (bySport[row.sport] ||= []).push(row);
+    // Read-only reuse of scores grade-picks.js already fetched — zero
+    // new Odds API calls. Only the literal score is read.
+    const { data: completedGames } = await supabase
+      .from('daily_picks')
+      .select('sport, away_team, home_team, commence_time, actual_home_score, actual_away_score')
+      .eq('graded', true)
+      .not('actual_home_score', 'is', null);
+
+    const scoreMap = new Map();
+    for (const g of completedGames || []) {
+      const key = `${g.sport}|${g.away_team}|${g.home_team}|${new Date(g.commence_time).getTime()}`;
+      scoreMap.set(key, { home: Number(g.actual_home_score), away: Number(g.actual_away_score) });
+    }
 
     let gradedCount = 0;
-    for (const [label, rows] of Object.entries(bySport)) {
-      const keys = SPORT_KEYS[label];
-      if (!keys) continue;
-      const keyList = Array.isArray(keys) ? keys : [keys];
-      for (const key of keyList) {
-        const url = `https://api.the-odds-api.com/v4/sports/${key}/scores/?apiKey=${ODDS_API_KEY}&daysFrom=3`;
-        const res2 = await fetchWithRetry(url);
-        if (!res2.ok) continue;
-        const games = await res2.json();
-        for (const game of games) {
-          if (!game.completed || !game.scores) continue;
-          const homeScore = Number(game.scores.find(s => s.name === game.home_team)?.score);
-          const awayScore = Number(game.scores.find(s => s.name === game.away_team)?.score);
-          if (Number.isNaN(homeScore) || Number.isNaN(awayScore)) continue;
-
-          const matches = rows.filter(r => r.away_team === game.away_team && r.home_team === game.home_team);
-          for (const row of matches) {
-            const result = gradeShadowPick(row.market_type, row.selection, row.point, game.home_team, homeScore, awayScore);
-            await supabase.from('shadow_candidates').update({
-              result,
-              actual_home_score: homeScore,
-              actual_away_score: awayScore,
-              graded_at: new Date().toISOString(),
-            }).eq('id', row.id);
-            gradedCount++;
-          }
-        }
-      }
+    let skippedNoScore = 0;
+    for (const row of pending) {
+      const key = `${row.sport}|${row.away_team}|${row.home_team}|${new Date(row.commence_time).getTime()}`;
+      const score = scoreMap.get(key);
+      if (!score) { skippedNoScore++; continue; }
+      const result = gradeShadowPick(row.market_type, row.selection, row.point, row.home_team, score.home, score.away);
+      await supabase.from('shadow_candidates').update({
+        result,
+        actual_home_score: score.home,
+        actual_away_score: score.away,
+        graded_at: new Date().toISOString(),
+      }).eq('id', row.id);
+      gradedCount++;
     }
-    res.status(200).json({ graded: gradedCount });
+
+    res.status(200).json({ graded: gradedCount, skippedNoScore, pending: pending.length });
   } catch (err) {
     console.error(err);
     await sendAlert('grade-shadow cron failed', err.message || String(err));
