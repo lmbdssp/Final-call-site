@@ -273,7 +273,13 @@ function computeExperimentalScores(edgeFraction, stdDevValue, books) {
 
 function toShadowRow(side, marketType, game, sportLabel, evaluatedAt) {
   const { scoreA, scoreB, scoreC } = computeExperimentalScores(side.value, side.consensusStdDev, side.books);
+  // The exact live selectionScore formula from handler()/fetchSportOdds, applied
+  // to every candidate here — not just the winner. This lets production be
+  // compared against A/B/C on identical future data without reconstruction.
+  // Mirrors production exactly; does not feed back into it in any way.
+  const productionScore = side.confidence + (side.value != null ? side.value * 100 : 0) - (marketType === 'Moneyline' ? 5 : 0);
   return {
+    production_score: Math.round(productionScore * 100) / 100,
     evaluated_at: evaluatedAt.toISOString(),
     algorithm_version: SHADOW_ALGORITHM_VERSION,
     sport: sportLabel,
