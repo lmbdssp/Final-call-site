@@ -255,6 +255,55 @@ function consensusTwoWay(entries, matchA, matchB) {
   };
 }
 
+// Shadow research infrastructure — records the broadest reasonable
+// universe of candidates (negative/zero/positive edge alike) so future
+// thresholds can be tested against real outcomes without survivorship
+// bias. Completely separate from daily_picks/pick_candidates: does not
+// read from or influence the live selection in any way.
+const SHADOW_ALGORITHM_VERSION = 'consensus-v1.1';
+
+function computeExperimentalScores(edgeFraction, stdDevValue, books) {
+  if (stdDevValue == null || !stdDevValue || !books) return { scoreA: null, scoreB: null, scoreC: null };
+  return {
+    scoreA: edgeFraction / (stdDevValue / Math.sqrt(books)),
+    scoreB: edgeFraction / stdDevValue,
+    scoreC: edgeFraction / (stdDevValue / Math.sqrt(Math.min(books, 5))),
+  };
+}
+
+function toShadowRow(side, marketType, game, sportLabel, evaluatedAt) {
+  const { scoreA, scoreB, scoreC } = computeExperimentalScores(side.value, side.consensusStdDev, side.books);
+  return {
+    evaluated_at: evaluatedAt.toISOString(),
+    algorithm_version: SHADOW_ALGORITHM_VERSION,
+    sport: sportLabel,
+    away_team: game.away_team,
+    home_team: game.home_team,
+    commence_time: game.commence_time,
+    market_type: marketType,
+    selection: side.name,
+    point: side.point,
+    consensus_probability: side.probability ?? null,
+    books_counted: side.books,
+    consensus_std_dev: side.consensusStdDev,
+    best_odds: side.price,
+    best_book: side.book,
+    best_implied_probability: side.price != null ? americanToProb(side.price) : null,
+    raw_value_edge_pp: side.value != null ? Math.round(side.value * 1000) / 10 : null,
+    oldest_quote_age_seconds: side.oldestAgeSec,
+    sync_window_seconds: side.syncWindowSec,
+    best_price_age_seconds: side.bestPriceAgeSec,
+    gate_freshness_pass: side.gateFreshnessPass,
+    freshness_fail_reason: side.freshnessFailReason,
+    score_a: scoreA, score_b: scoreB, score_c: scoreC,
+    // Reference only — never used to decide whether this row gets stored.
+    meets_edge_075: side.value != null ? side.value * 100 >= 0.75 : null,
+    meets_books_4: side.books != null ? side.books >= 4 : null,
+    meets_dispersion_005: side.consensusStdDev != null ? side.consensusStdDev <= 0.05 : null,
+    meets_confidence_25: side.confidence != null ? side.confidence >= 25 : null,
+  };
+}
+
 // Testing thresholds only — hypotheses to validate against real graded
 // results, not claims that these specific numbers are correct.
 const GATE_MIN_EDGE_PP = 2.0;
@@ -299,6 +348,7 @@ function makeSide(trueProb, best, name, books, consensusStdDev, oldestQuoteAt, n
   return {
     name, price: best.price, point: best.point, book: best.book,
     confidence: Math.round(trueProb * 100),
+    probability: trueProb, // full-precision fraction, for shadow storage — not rounded like confidence
     value, books, consensusStdDev,
     gateEdgePass, gateBooksPass, gateAgreementPass,
     oldestQuoteAt, newestQuoteAt, bestPriceQuoteAt,
@@ -402,7 +452,7 @@ function consensusThreeWay(entries, homeTeam, awayTeam) {
   };
 }
 
-async function fetchSportOdds(sportLabel, sportKey, snapshotRows, evaluatedAt) {
+async function fetchSportOdds(sportLabel, sportKey, snapshotRows, evaluatedAt, shadowRows) {
   const regions = sportLabel === 'Soccer' ? 'us,uk' : 'us';
   const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?apiKey=${ODDS_API_KEY}&regions=${regions}&markets=h2h,spreads,totals&oddsFormat=american`;
   const res = await fetchWithRetry(url);
@@ -444,6 +494,7 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows, evaluatedAt) {
     let mlConfidence = 0, mlPickStr = null, mlOdds = null, mlTeam = null;
     let mlValue = null, mlBook = null, mlBooks = null, mlGates = null;
     let mlOtherSides = []; // every side not used for the live pick — analysis only
+    let mlPrimarySide = null; // the full object for the selected side — needed for shadow storage
     if (h2hSb.length) {
       // Soccer's moneyline is a real 3-way market (Home/Draw/Away) — a
       // plain 2-way de-vig ignores Draw entirely and inflates both sides.
@@ -452,6 +503,7 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows, evaluatedAt) {
         : consensusTwoWay(h2hSb, o => o.name === game.home_team, o => o.name === game.away_team);
       if (c) {
         const s = buildSide(c, c.probA >= c.probB, game.home_team, game.away_team, evaluatedAt);
+        mlPrimarySide = s;
         mlTeam = s.name; mlOdds = s.price; mlConfidence = s.confidence;
         mlValue = s.value; mlBook = s.book; mlBooks = s.books;
         mlGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass,
@@ -471,10 +523,12 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows, evaluatedAt) {
     let spreadConfidence = 0, spreadPickStr = null, spreadOdds = null, spreadTeam = null, spreadPoint = null;
     let spreadValue = null, spreadBook = null, spreadBooks = null, spreadGates = null;
     let spreadOtherSide = null; // the other side of the same line — analysis only
+    let spreadPrimarySide = null;
     if (spreadEntriesAllSb.length) {
       const result = bestLineCandidate(spreadEntriesAllSb, game.home_team, o => o.name === game.home_team, o => o.name === game.away_team, game.home_team, game.away_team, evaluatedAt);
       const s = result?.primary;
       if (s) {
+        spreadPrimarySide = s;
         spreadTeam = s.name; spreadOdds = s.price; spreadPoint = s.point;
         spreadConfidence = s.confidence; spreadValue = s.value; spreadBook = s.book; spreadBooks = s.books;
         spreadGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass,
@@ -490,10 +544,12 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows, evaluatedAt) {
     let totalConfidence = 0, totalPickStr = null, totalOdds = null, totalDirection = null, totalPoint = null;
     let totalValue = null, totalBook = null, totalBooks = null, totalGates = null;
     let totalOtherSide = null; // the other side of the same line — analysis only, mirrors spreadOtherSide
+    let totalPrimarySide = null;
     if (totalEntriesAllSb.length) {
       const totalResult = bestLineCandidate(totalEntriesAllSb, 'Over', o => o.name === 'Over', o => o.name === 'Under', 'Over', 'Under', evaluatedAt);
       if (totalResult) {
         const s = totalResult.primary;
+        totalPrimarySide = s;
         totalDirection = s.name; totalOdds = s.price; totalPoint = s.point;
         totalConfidence = s.confidence; totalValue = s.value; totalBook = s.book; totalBooks = s.books;
         totalGates = { stdDev: s.consensusStdDev, edgePass: s.gateEdgePass, booksPass: s.gateBooksPass, agreementPass: s.gateAgreementPass, pass: s.gatePass,
@@ -633,6 +689,20 @@ async function fetchSportOdds(sportLabel, sportKey, snapshotRows, evaluatedAt) {
     }
     candidateRecords.push(...otherSideRecords);
 
+    // Shadow research capture — the broadest reasonable universe of
+    // pregame candidates, unfiltered by edge/confidence/any threshold.
+    // This is separate storage, computed from the same already-built
+    // objects above; it does not affect `best`, `candidateRecords`, or
+    // anything written to daily_picks/pick_candidates.
+    if (shadowRows) {
+      if (mlPrimarySide) shadowRows.push(toShadowRow(mlPrimarySide, 'Moneyline', game, sportLabel, evaluatedAt));
+      for (const side of mlOtherSides) shadowRows.push(toShadowRow(side, 'Moneyline', game, sportLabel, evaluatedAt));
+      if (spreadPrimarySide) shadowRows.push(toShadowRow(spreadPrimarySide, 'Spread', game, sportLabel, evaluatedAt));
+      if (spreadOtherSide) shadowRows.push(toShadowRow(spreadOtherSide, 'Spread', game, sportLabel, evaluatedAt));
+      if (totalPrimarySide) shadowRows.push(toShadowRow(totalPrimarySide, 'Total', game, sportLabel, evaluatedAt));
+      if (totalOtherSide) shadowRows.push(toShadowRow(totalOtherSide, 'Total', game, sportLabel, evaluatedAt));
+    }
+
     const parlayCandidates = candidates.filter(c => c.odds == null || c.odds > MAX_PARLAY_ODDS);
     const parlayBest = (parlayCandidates.length ? parlayCandidates : candidates)
       .reduce((a, b) => (b.confidence > a.confidence ? b : a));
@@ -714,6 +784,7 @@ export default async function handler(req, res) {
 
     let allPicks = [];
     const snapshotRows = [];
+    const shadowRows = [];
     // One evaluation timestamp for the whole run, so every candidate's
     // quote-age is measured against the same moment rather than drifting
     // second-to-second across a multi-sport fetch.
@@ -721,7 +792,7 @@ export default async function handler(req, res) {
     for (const [label, keys] of Object.entries(SPORT_KEYS)) {
       const keyList = Array.isArray(keys) ? keys : [keys];
       for (const key of keyList) {
-        const picks = await fetchSportOdds(label, key, snapshotRows, evaluatedAt);
+        const picks = await fetchSportOdds(label, key, snapshotRows, evaluatedAt, shadowRows);
         allPicks = allPicks.concat(picks);
       }
     }
@@ -822,7 +893,29 @@ export default async function handler(req, res) {
       }
     }
 
-    res.status(200).json({ inserted: allPicks.length, parlayPicks: parlayPickCount, snapshotRows: snapshotRows.length });
+    // Shadow research storage — pure insert, never delete-then-replace.
+    // Each row is tied to this specific fetch_run_id, so the same
+    // candidate observed again in a future run creates a NEW row rather
+    // than overwriting this one. ignoreDuplicates guards only against a
+    // genuine accidental duplicate within this one run — it does not
+    // and cannot suppress legitimate future observations, since those
+    // carry a different fetch_run_id and are unaffected by this constraint.
+    if (logRow?.id && shadowRows.length) {
+      const taggedShadowRows = shadowRows.map(r => ({ ...r, fetch_run_id: logRow.id }));
+      const CHUNK = 500;
+      for (let i = 0; i < taggedShadowRows.length; i += CHUNK) {
+        const chunk = taggedShadowRows.slice(i, i + CHUNK);
+        const { error: shadowErr } = await supabase
+          .from('shadow_candidates')
+          .upsert(chunk, {
+            onConflict: 'fetch_run_id,sport,away_team,home_team,commence_time,market_type,selection,point',
+            ignoreDuplicates: true,
+          });
+        if (shadowErr) console.error('Shadow insert failed:', shadowErr.message);
+      }
+    }
+
+    res.status(200).json({ inserted: allPicks.length, parlayPicks: parlayPickCount, snapshotRows: snapshotRows.length, shadowRows: shadowRows.length });
   } catch (err) {
     console.error(err);
     await sendAlert('fetch-picks cron failed', err.message || String(err));
