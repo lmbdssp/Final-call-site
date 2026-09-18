@@ -73,10 +73,11 @@ export default async function handler(req, res) {
   const todayStr = easternDateStr();
   const { data, error } = await supabase
     .from('daily_picks')
-    .select('sport,league,away_team,home_team,commence_time,ml_pick,ml_odds,spread_pick,spread_odds,total_pick,total_odds,best_pick_type,prop_pick,confidence,value_edge,best_book')
+    .select('id,sport,league,away_team,home_team,commence_time,ml_pick,ml_odds,spread_pick,spread_odds,total_pick,total_odds,best_pick_type,prop_pick,confidence,value_edge,best_book')
     .eq('game_date', todayStr)
     .eq('sport', sport)
-    .order('commence_time', { ascending: true });
+    .order('commence_time', { ascending: true })
+    .order('id', { ascending: true });
 
   if (error) { console.error(error); return res.status(500).json({ error: 'Could not load games' }); }
   if (!data || data.length === 0) return res.status(200).json({ games: [], trimmed: false, totalBeforeTrim: 0, isSubscribed });
