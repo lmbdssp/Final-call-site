@@ -127,16 +127,39 @@ export default async function handler(req, res) {
       }
     }
 
-    const { data: stuck } = await supabase
+    // Two different situations get lumped into "ungraded" and deserve
+    // different treatment. A game 1-3 days old with no score yet is
+    // normal lag (postponements, late-reporting leagues) — informational
+    // only. A game beyond the scores API's daysFrom=3 lookback window can
+    // NEVER be picked up by this cron automatically, no matter how many
+    // more times it runs — that needs a human to manually grade or void it,
+    // exactly like the Cal Poly/San Jose State and South Alabama/Arkansas
+    // State cases resolved on 2026-09-18.
+    const { data: allUngraded } = await supabase
       .from('daily_picks')
       .select('id,sport,away_team,home_team,commence_time')
       .eq('graded', false)
       .lt('commence_time', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
-    if (stuck && stuck.length > 0) {
-      await sendAlert(
-        'Games stuck ungraded',
-        stuck.map(g => `${g.sport}: ${g.away_team} @ ${g.home_team} (${g.commence_time})`).join('\n')
-      );
+
+    if (allUngraded && allUngraded.length > 0) {
+      const lookbackCutoff = Date.now() - 3 * 24 * 60 * 60 * 1000;
+      const recent = allUngraded.filter(g => new Date(g.commence_time).getTime() >= lookbackCutoff);
+      const chronic = allUngraded.filter(g => new Date(g.commence_time).getTime() < lookbackCutoff);
+
+      if (chronic.length > 0) {
+        await sendAlert(
+          'ACTION NEEDED: games past the auto-grading window',
+          `These are older than the scores API's 3-day lookback and will NEVER be caught automatically. Each needs a manual check — grade with the real score if the game happened, or void (graded:true, push:true) if it didn't (e.g. a schedule correction):\n\n` +
+          chronic.map(g => `${g.sport}: ${g.away_team} @ ${g.home_team} (${g.commence_time})`).join('\n')
+        );
+      }
+      if (recent.length > 0) {
+        await sendAlert(
+          'Games awaiting result (normal lag)',
+          `Still within the automatic grading window — likely postponed or not yet reported. No action needed unless this persists past 3 days:\n\n` +
+          recent.map(g => `${g.sport}: ${g.away_team} @ ${g.home_team} (${g.commence_time})`).join('\n')
+        );
+      }
     }
 
     res.status(200).json({ graded: gradedCount });
