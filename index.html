@@ -211,8 +211,7 @@ align-items:center; margin-bottom:16px; flex-wrap:wrap;}
     </div>
 
     <div class="plan-banner" id="planBanner">
-      <div class="txt"><b>Free plan</b> — one unlocked Final Call per sport. Go Pro for our pick on every game, the daily Top 3 bundle, and player props where books post them.</div>
-      <button id="openSubscribeBtn">Go Pro</button>
+      <div class="txt"><b>Free plan</b> — one unlocked Final Call per sport. Pro unlocks our pick on every game, the daily Top 3 bundle, and player props where books post them.</div>
     </div>
 
     <!-- PARLAY OF THE DAY — Pro-gated widget, moved to top -->
@@ -378,9 +377,6 @@ function closeModal(){ modal.classList.add('hidden'); }
 const refundAgree = document.getElementById('refundAgree');
 const subscribeConfirmBtn = document.getElementById('subscribeConfirm');
 refundAgree.addEventListener('change', ()=>{ subscribeConfirmBtn.disabled = !refundAgree.checked; });
-document.getElementById('openSubscribeBtn').addEventListener('click', ()=>{
-  if(!currentUser){ goToSignIn(); } else { openModal(); }
-});
 document.getElementById('subscribeCancel').addEventListener('click', closeModal);
 document.getElementById('planWeekly').addEventListener('click', ()=>selectPlan('weekly'));
 document.getElementById('planMonthly').addEventListener('click', ()=>selectPlan('monthly'));
