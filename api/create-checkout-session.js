@@ -4,11 +4,32 @@ import { createClient } from '@supabase/supabase-js';
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+function isTrustedOrigin(req) {
+  const origin = req.headers.origin;
+  if (!origin) return true; // non-browser callers (curl, server-to-server) send no Origin
+  return origin === 'https://finalcallpro.com' || origin === 'https://www.finalcallpro.com';
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' });
+  if (!isTrustedOrigin(req)) return res.status(403).json({ error: 'Forbidden' });
 
-  const { email, plan } = req.body || {};
-  if (!email || !plan) return res.status(400).json({ error: 'Missing email or plan' });
+  // Identity comes from a verified Supabase session, never from the
+  // request body — closes the same class of bug already fixed on
+  // create-portal-session.js (an attacker could otherwise start a
+  // checkout session pre-filled with someone else's email).
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) return res.status(401).json({ error: 'Sign in required' });
+
+  const { data: userData, error: userErr } = await supabase.auth.getUser(token);
+  if (userErr || !userData?.user?.email) {
+    return res.status(401).json({ error: 'Sign in required' });
+  }
+  const email = userData.user.email;
+
+  const { plan } = req.body || {};
+  if (!plan) return res.status(400).json({ error: 'Missing plan' });
 
   const ip = (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || 'unknown';
   const { data: allowed } = await supabase.rpc('check_rate_limit', { p_key: `checkout:${ip}`, p_max_count: 5, p_window_seconds: 60 });
