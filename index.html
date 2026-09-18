@@ -388,9 +388,14 @@ function selectPlan(p){
 document.getElementById('subscribeConfirm').addEventListener('click', async ()=>{
   const btn = document.getElementById('subscribeConfirm');
   btn.disabled = true; btn.textContent = 'Redirecting…';
+  const { data: { session } } = await sb.auth.getSession();
   const res = await fetch('/api/create-checkout-session', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ email: currentUser.email, plan: selectedPlan })
+    method:'POST',
+    headers:{
+      'Content-Type':'application/json',
+      'Authorization': `Bearer ${session?.access_token || ''}`,
+    },
+    body: JSON.stringify({ plan: selectedPlan })
   });
   const data = await res.json();
   if(data.url){ window.location.href = data.url; }
