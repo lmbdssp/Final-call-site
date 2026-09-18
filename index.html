@@ -578,7 +578,7 @@ async function loadParlay(){
   if (result.locked) {
     unlockedEl.classList.add('hidden');
     lockWrap.classList.remove('hidden');
-    document.getElementById('parlayLockMsg').textContent = currentUser ? 'Pro feature' : 'Sign in to unlock';
+    document.getElementById('parlayLockMsg').textContent = currentUser ? 'Pro feature' : 'Go Pro to unlock';
     document.getElementById('parlaySub').textContent = 'Bundled together';
     return;
   }
