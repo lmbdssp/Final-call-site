@@ -309,6 +309,19 @@ const SUPABASE_ANON_KEY = "sb_publishable_mNbAuqsvabGviBaKuNu8jg_QXdlCEH_";
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 
+// All team/league/prop strings ultimately originate from a third-party
+// odds API, not first-party user input — but they're rendered via
+// innerHTML, so escape them defensively rather than trust the source.
+function escapeHtml(str) {
+  if (str == null) return str;
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 const authEmail = document.getElementById('authEmail');
 const authError = document.getElementById('authError');
 const authStatus = document.getElementById('authStatus');
@@ -444,11 +457,11 @@ function marketBox(label, pick, odds, isBest, confidence, locked, edge, book){
   const oddsStr = odds == null ? '' : (odds > 0 ? `+${odds}` : `${odds}`);
   const showBest = isBest && !locked;
   const edgeLine = showBest && edge != null && edge > 0
-    ? `<div class="gm-edge">+${edge}% value${book ? ` at ${book}` : ''}</div>`
+    ? `<div class="gm-edge">+${edge}% value${book ? ` at ${escapeHtml(book)}` : ''}</div>`
     : '';
   // When locked, the pick/odds fields are genuinely absent from the API
   // response (not just hidden) — show "Locked" rather than a blank dash.
-  const pickText = pick || (locked ? 'Locked' : '—');
+  const pickText = escapeHtml(pick) || (locked ? 'Locked' : '—');
   return `<div class="gc-market${showBest ? ' best' : ''}">
     <div class="gm-label">${label}</div>
     <div class="gm-pick">${pickText}</div>
@@ -485,15 +498,15 @@ async function loadGamesForSport(sport){
     const finalCallLine = g.locked
       ? `<div class="gc-locked-line"><b>Final Call:</b> locked — <a href="#" class="prop-unlock-link">go Pro</a> to see our projection</div>`
       : '';
-    const leagueTag = g.league ? `<div class="gc-league">${g.league}</div>` : '';
+    const leagueTag = g.league ? `<div class="gc-league">${escapeHtml(g.league)}</div>` : '';
     const propLine = !g.has_props ? '' : (result.isSubscribed
-      ? (g.prop_pick ? `<b>Prop projection:</b> ${g.prop_pick}` : 'No prop projection posted for this game yet.')
+      ? (g.prop_pick ? `<b>Prop projection:</b> ${escapeHtml(g.prop_pick)}` : 'No prop projection posted for this game yet.')
       : `<b>Prop projection:</b> locked — <a href="#" class="prop-unlock-link">go Pro</a> to see it`);
     const propSection = g.has_props ? `<div class="gc-prop">${propLine}</div>` : '';
     return `<div class="game-card">
     ${leagueTag}
 
-      <div class="gc-head"><span class="gc-teams">${g.away_team} @ ${g.home_team}</span><span class="gc-time">${timeStr}</span></div>
+      <div class="gc-head"><span class="gc-teams">${escapeHtml(g.away_team)} @ ${escapeHtml(g.home_team)}</span><span class="gc-time">${timeStr}</span></div>
       <div class="gc-markets">${markets}</div>
       ${finalCallLine}
       ${propSection}
@@ -545,7 +558,7 @@ if (dateStr >= todayCutoff) {
     const status = pick.graded ? (pick.correct ? 'Hit' : 'Miss') : 'Pending';
     const actual = pick.graded ? `Final: ${pick.actual_away_score}–${pick.actual_home_score}` : `Projected: ${pick.predicted_away_score}–${pick.predicted_home_score}`;
     card.innerHTML = `
-      <div class="rc-teams"><span class="ball-icon">${icon}</span>${pick.away_team} @ ${pick.home_team}${pick.prop_pick ? `<div class="rc-prop">Prop projection: ${pick.prop_pick}</div>` : ''}</div>
+      <div class="rc-teams"><span class="ball-icon">${icon}</span>${escapeHtml(pick.away_team)} @ ${escapeHtml(pick.home_team)}${pick.prop_pick ? `<div class="rc-prop">Prop projection: ${escapeHtml(pick.prop_pick)}</div>` : ''}</div>
       <div>
         <div class="rc-score">${actual}</div>
         <div class="rc-status">${status}</div>
@@ -595,7 +608,7 @@ async function loadParlay(){
   } else {
     unlockedEl.innerHTML = data.map(p=>{
       const icon = (sports[p.sport] && sports[p.sport].icon) || '🎯';
-      return `<div class="parlay-pick"><span class="ball-icon">${icon}</span>${p.away_team} @ ${p.home_team} — ${p.parlay_pick_summary || 'TBD'}${p.parlay_confidence != null ? ` • ${p.parlay_confidence}%` : ''}</div>`;
+      return `<div class="parlay-pick"><span class="ball-icon">${icon}</span>${escapeHtml(p.away_team)} @ ${escapeHtml(p.home_team)} — ${escapeHtml(p.parlay_pick_summary) || 'TBD'}${p.parlay_confidence != null ? ` • ${p.parlay_confidence}%` : ''}</div>`;
     }).join('');
   }
 }
